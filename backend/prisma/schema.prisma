@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Catalog: reusable metric definitions
+model Metric {
+  id          Int      @id @default(autoincrement())
+  metricKey   String   @unique @map("metric_key")
+  unit        String?
+  description String?
+
+  templateMetrics TemplateMetric[]
+  overrides       TargetMetricOverride[]
+  readings        MetricReading[]
+  alerts          Alert[]
+
+  @@map("metrics")
+}
+
+// Templates: pure organizational bundles for mass-applying metrics
+model MetricTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  templateMetrics TemplateMetric[]
+  targetTemplates TargetTemplate[]
+
+  @@map("metric_templates")
+}
+
+// Join table: metrics in a template + that template's suggested defaults
+model TemplateMetric {
+  id                  Int      @id @default(autoincrement())
+  templateId          Int      @map("template_id")
+  metricId            Int      @map("metric_id")
+  reportIntervalSec   Int      @default(60) @map("report_interval_sec")
+  condition           String
+  threshold           Float
+  consecutiveBreaches Int      @default(1) @map("consecutive_breaches")
+  severity            String   @default("warning")
+  responsibleTeam     String?  @map("responsible_team")
+  alertSubject        String   @default("") @map("alert_subject")
+  alertDescription    String?  @map("alert_description")
+  priority            String   @default("p3")
+
+  template MetricTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  metric   Metric         @relation(fields: [metricId], references: [id])
+
+  @@unique([templateId, metricId])
+  @@map("template_metrics")
+}
+
+// Targets: monitored hosts/services
+model Target {
+  id               Int       @id @default(autoincrement())
+  name             String
+  type             String
+  ipAddress        String?   @map("ip_address")
+  description      String?
+  responsibleTeam  String?   @map("responsible_team")
+  status           String    @default("unknown")
+  lastSeenAt       DateTime? @map("last_seen_at")
+  apiKeyHash       String    @map("api_key_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  targetTemplates TargetTemplate[]
+  overrides       TargetMetricOverride[]
+  readings        MetricReading[]
+  alerts          Alert[]
+
+  @@map("targets")
+}
+
+// Which templates a target pulls metrics from (many-to-many)
+model TargetTemplate {
+  id         Int @id @default(autoincrement())
+  targetId   Int @map("target_id")
+  templateId Int @map("template_id")
+
+  target   Target         @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  template MetricTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, templateId])
+  @@map("target_templates")
+}
+
+// Per-(target, metric) override, template-agnostic.
+// App-layer rule: metric_id must already be reachable via one of the
+// target's assigned templates before an override can be created.
+model TargetMetricOverride {
+  id                  Int     @id @default(autoincrement())
+  targetId            Int     @map("target_id")
+  metricId            Int     @map("metric_id")
+  reportIntervalSec   Int?    @map("report_interval_sec")
+  condition           String?
+  threshold           Float?
+  consecutiveBreaches Int?    @map("consecutive_breaches")
+  severity            String?
+  responsibleTeam     String? @map("responsible_team")
+  alertSubject        String? @map("alert_subject")
+  alertDescription    String? @map("alert_description")
+  priority            String?
+
+  target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, metricId])
+  @@map("target_metric_overrides")
+}
+
+// Time-series data
+model MetricReading {
+  id          BigInt   @id @default(autoincrement())
+  targetId    Int      @map("target_id")
+  metricId    Int      @map("metric_id")
+  value       Float
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric Metric @relation(fields: [metricId], references: [id])
+
+  @@index([targetId, metricId, recordedAt(sort: Desc)], name: "idx_readings_target_metric_time")
+  @@map("metric_readings")
+}
+
+// Alerts: snapshot of resolved policy + response metadata at breach time
+model Alert {
+  id                 Int       @id @default(autoincrement())
+  targetId           Int       @map("target_id")
+  metricId           Int       @map("metric_id")
+  triggeredValue     Float     @map("triggered_value")
+  severity           String
+  status             String    @default("open")
+  openedAt           DateTime  @default(now()) @map("opened_at")
+  resolvedAt         DateTime? @map("resolved_at")
+  responsibleTeam    String    @map("responsible_team")
+  subject            String
+  description        String?
+  priority           String
+  firstResponseAt    DateTime? @map("first_response_at")
+  firstResponseBy    String?   @map("first_response_by")
+  firstResponseNote  String?   @map("first_response_note")
+
+  target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric Metric @relation(fields: [metricId], references: [id])
+
+  @@index([status], name: "idx_alerts_status")
+  @@index([targetId], name: "idx_alerts_target")
+  @@map("alerts")
+}

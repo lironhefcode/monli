@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: monli
+      POSTGRES_PASSWORD: monli
+      POSTGRES_DB: monli
+    ports:
+      - "5432:5432"
+    volumes:
+      - monli_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  monli_postgres_data:

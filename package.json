@@ -1,0 +1,10 @@
+{
+  "name": "monli",
+  "version": "1.0.0",
+  "description": "Self-hosted metric monitoring system",
+  "private": true,
+  "license": "ISC",
+  "workspaces": [
+    "backend"
+  ]
+}
