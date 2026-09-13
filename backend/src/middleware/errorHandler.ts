@@ -2,9 +2,9 @@ import type { NextFunction, Request, Response } from "express";
 
 export function errorHandler(
   err: unknown,
-  req: Request,
+  _req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) {
   console.error(err);
   const message = err instanceof Error ? err.message : "Internal Server Error";
