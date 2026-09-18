@@ -12,7 +12,7 @@ export function errorHandler(
     return;
   }
 
+  // Never echo internal error details (Prisma/DB/stack info) to clients.
   console.error(err);
-  const message = err instanceof Error ? err.message : "Internal Server Error";
-  res.status(500).json({ error: message });
+  res.status(500).json({ error: "Internal Server Error" });
 }

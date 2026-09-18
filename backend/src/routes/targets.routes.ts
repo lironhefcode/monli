@@ -79,8 +79,8 @@ targetsRouter.post(
 // GET /targets/:id/metrics — agent-facing: effective flat metric list
 targetsRouter.get(
   "/:id/metrics",
-  apiKeyAuth,
   validate({ params: targetIdParamsSchema }),
+  apiKeyAuth,
   asyncHandler(async (req: Request, res: Response) => {
     const targetId = Number(req.params.id);
     const metrics = await getEffectiveMetrics(targetId);
@@ -91,8 +91,8 @@ targetsRouter.get(
 // POST /targets/:id/metrics — agent-facing: submit a reading
 targetsRouter.post(
   "/:id/metrics",
-  apiKeyAuth,
   validate({ params: targetIdParamsSchema, body: submitReadingSchema }),
+  apiKeyAuth,
   asyncHandler(async (req: Request<Record<string, string>, unknown, SubmitReadingInput>, res: Response) => {
     const targetId = Number(req.params.id);
     const reading = await submitReading(targetId, req.body);

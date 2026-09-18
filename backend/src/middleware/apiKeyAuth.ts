@@ -3,6 +3,8 @@ import { prisma } from "../db/prisma";
 import { verifyApiKey } from "../utils/api-key";
 import { HttpError } from "../utils/http-error";
 
+// Must run after validate({ params: targetIdParamsSchema }) so req.params.id
+// is already known to be a positive integer.
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction) {
   void authenticate(req).then(next).catch(next);
 }
