@@ -9,16 +9,33 @@ type ValidateTargets = {
 
 export function validate(targets: ValidateTargets) {
   return (req: Request, res: Response, next: NextFunction) => {
-    for (const [key, schema] of Object.entries(targets)) {
-      const result = schema.safeParse((req as any)[key]);
+    if (targets.body) {
+      const result = targets.body.safeParse(req.body);
       if (!result.success) {
-        return res.status(400).json({
-          error: `Invalid ${key}`,
-          details: result.error.flatten(),
-        });
+        res.status(400).json({ error: "Invalid body", details: result.error.flatten() });
+        return;
       }
-      (req as any)[key] = result.data;
+      req.body = result.data;
     }
+
+    if (targets.params) {
+      const result = targets.params.safeParse(req.params);
+      if (!result.success) {
+        res.status(400).json({ error: "Invalid params", details: result.error.flatten() });
+        return;
+      }
+      Object.assign(req.params, result.data);
+    }
+
+    if (targets.query) {
+      const result = targets.query.safeParse(req.query);
+      if (!result.success) {
+        res.status(400).json({ error: "Invalid query", details: result.error.flatten() });
+        return;
+      }
+      Object.assign(req.query, result.data);
+    }
+
     next();
   };
 }

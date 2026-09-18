@@ -1,9 +1,21 @@
 import type { NextFunction, Request, Response } from "express";
+import { prisma } from "../db/prisma";
+import { verifyApiKey } from "../utils/api-key";
+import { HttpError } from "../utils/http-error";
 
-// TODO: hash the incoming `X-Api-Key` header and compare against
-// targets.api_key_hash for req.params.id. Passing through unauthenticated
-// for now so agent-facing routes are wired up ahead of the auth
-// implementation.
 export function apiKeyAuth(req: Request, res: Response, next: NextFunction) {
-  next();
+  void authenticate(req).then(next).catch(next);
+}
+
+async function authenticate(req: Request): Promise<void> {
+  const apiKey = req.header("x-api-key");
+  if (!apiKey) {
+    throw new HttpError(401, "missing X-Api-Key header");
+  }
+
+  const targetId = Number(req.params.id);
+  const target = await prisma.target.findUnique({ where: { id: targetId } });
+  if (!target || !verifyApiKey(apiKey, target.apiKeyHash)) {
+    throw new HttpError(401, "invalid API key");
+  }
 }

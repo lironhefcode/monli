@@ -23,7 +23,7 @@ model Metric {
 }
 
 // Templates: pure organizational bundles for mass-applying metrics
-model MetricTemplate {
+model Template {
   id          Int      @id @default(autoincrement())
   name        String
   description String?
@@ -32,7 +32,7 @@ model MetricTemplate {
   templateMetrics TemplateMetric[]
   targetTemplates TargetTemplate[]
 
-  @@map("metric_templates")
+  @@map("templates")
 }
 
 // Join table: metrics in a template + that template's suggested defaults
@@ -50,8 +50,8 @@ model TemplateMetric {
   alertDescription    String?  @map("alert_description")
   priority            String   @default("p3")
 
-  template MetricTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  metric   Metric         @relation(fields: [metricId], references: [id])
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  metric   Metric   @relation(fields: [metricId], references: [id])
 
   @@unique([templateId, metricId])
   @@map("template_metrics")
@@ -63,6 +63,8 @@ model Target {
   name             String
   type             String
   ipAddress        String?   @map("ip_address")
+  os               String?
+  arch             String?
   description      String?
   responsibleTeam  String?   @map("responsible_team")
   status           String    @default("unknown")
@@ -70,12 +72,28 @@ model Target {
   apiKeyHash       String    @map("api_key_hash")
   createdAt        DateTime  @default(now()) @map("created_at")
 
-  targetTemplates TargetTemplate[]
-  overrides       TargetMetricOverride[]
-  readings        MetricReading[]
-  alerts          Alert[]
+  targetTemplates  TargetTemplate[]
+  overrides        TargetMetricOverride[]
+  readings         MetricReading[]
+  alerts           Alert[]
+  enrollmentTokens EnrollmentToken[]
 
   @@map("targets")
+}
+
+// Single-use, short-lived token handed out with the agent install command.
+// The agent exchanges it for a target-bound API key on first check-in.
+model EnrollmentToken {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  targetId  Int?      @map("target_id")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  target Target? @relation(fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@map("enrollment_tokens")
 }
 
 // Which templates a target pulls metrics from (many-to-many)
@@ -84,8 +102,8 @@ model TargetTemplate {
   targetId   Int @map("target_id")
   templateId Int @map("template_id")
 
-  target   Target         @relation(fields: [targetId], references: [id], onDelete: Cascade)
-  template MetricTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  target   Target   @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@unique([targetId, templateId])
   @@map("target_templates")

@@ -81,7 +81,7 @@ CREATE TABLE metrics (
 );
 
 -- Templates: pure organizational bundles for mass-applying metrics
-CREATE TABLE metric_templates (
+CREATE TABLE templates (
   id          SERIAL PRIMARY KEY,
   name        TEXT NOT NULL,
   description TEXT,
@@ -91,7 +91,7 @@ CREATE TABLE metric_templates (
 -- Join table: metrics in a template + that template's suggested defaults
 CREATE TABLE template_metrics (
   id                    SERIAL PRIMARY KEY,
-  template_id           INTEGER NOT NULL REFERENCES metric_templates(id) ON DELETE CASCADE,
+  template_id           INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
   metric_id             INTEGER NOT NULL REFERENCES metrics(id),
   report_interval_sec   INTEGER NOT NULL DEFAULT 60,
   condition             TEXT NOT NULL,      -- 'gt' | 'lt' | 'gte' | 'lte' | 'eq'
@@ -111,6 +111,8 @@ CREATE TABLE targets (
   name              TEXT NOT NULL,
   type              TEXT NOT NULL,          -- 'host' | 'service' | 'database' | 'network_device' etc.
   ip_address        INET,
+  os                TEXT,                   -- agent-reported
+  arch              TEXT,                   -- agent-reported
   description       TEXT,
   responsible_team  TEXT,                   -- target-level default team
   status            TEXT NOT NULL DEFAULT 'unknown',  -- 'up' | 'down' | 'unknown', derived
@@ -119,11 +121,22 @@ CREATE TABLE targets (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Single-use, short-lived tokens handed out with the agent install command.
+-- The agent exchanges one for a target-bound API key on first check-in.
+CREATE TABLE enrollment_tokens (
+  id          SERIAL PRIMARY KEY,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  used_at     TIMESTAMPTZ,
+  target_id   INTEGER REFERENCES targets(id) ON DELETE SET NULL,  -- which target it produced
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Which templates a target pulls metrics from (many-to-many)
 CREATE TABLE target_templates (
   id           SERIAL PRIMARY KEY,
   target_id    INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
-  template_id  INTEGER NOT NULL REFERENCES metric_templates(id) ON DELETE CASCADE,
+  template_id  INTEGER NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
   UNIQUE (target_id, template_id)
 );
 
@@ -185,9 +198,30 @@ The agent is intentionally "dumb" — all policy, thresholds, routing, and
 priorities live server-side. The agent only knows _what_ to measure and _how
 often_.
 
+**Install / enrollment flow:**
+
+The user never types in a target's name or IP. In the UI they click "Install
+Agent", which calls `POST /agents/enrollment-tokens` and shows them a one-line
+curl install command containing a single-use, short-lived enrollment token.
+On first start the agent calls `POST /agents/register` with that token and its
+self-detected `{ hostname, os, arch }`. The server:
+
+- takes the IP from the request's actual source address (`req.ip`), never
+  from the agent's payload, so an agent can't claim another host's identity;
+- if a target with the same hostname **and** same IP exists → it's a
+  re-install: re-bind to that target (rotate its API key);
+- otherwise (new hostname, or same hostname on a different IP) → create a new
+  target with `type = 'host'`;
+- returns `{ target, apiKey, serverUrl }`, which the agent persists locally
+  and uses for all subsequent calls.
+
+`POST /targets` remains for manually-created, agent-less targets (network
+devices, external services).
+
 **Lifecycle:**
 
-1. Load config (server URL + target API key) from env/config file.
+1. Load config (server URL + target API key + target id) from the local
+   config file written at enrollment.
 2. `GET /targets/:id/metrics` → flat list of `{ metric_key, report_interval_sec }`.
    No template/policy info is exposed to the agent.
 3. Run independent per-metric timers (metrics have different intervals).
@@ -240,7 +274,9 @@ silently dropping readings.
 | GET    | `/metrics`                               | List catalog metrics                                                               |
 | POST   | `/templates`                             | Create a metric template                                                           |
 | POST   | `/templates/:id/metrics`                 | Add a metric + default policy to a template                                        |
-| POST   | `/targets`                               | Create a target, generates API key                                                 |
+| POST   | `/agents/enrollment-tokens`              | Mint a single-use enrollment token + the curl install command to show the user     |
+| POST   | `/agents/register`                       | **Agent-facing.** Exchange enrollment token + `{hostname, os, arch}` for a target-bound API key (creates or re-binds the target) |
+| POST   | `/targets`                               | Manually create an agent-less target (network device, etc.), generates API key     |
 | POST   | `/targets/:id/templates`                 | Assign a template to a target                                                      |
 | DELETE | `/targets/:id/templates/:templateId`     | Unassign a template                                                                |
 | POST   | `/targets/:id/overrides`                 | Set/update a per-metric override (validates metric is inherited)                   |
