@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use reqwest::{Client, Response, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::host::HostIdentity;
 
@@ -42,6 +42,15 @@ pub struct RegisteredTarget {
 pub struct MetricSpec {
     pub metric_key: String,
     pub report_interval_sec: u64,
+}
+
+/// Body of `POST /targets/:id/metrics`, matching `submitReadingSchema`.
+#[derive(Debug, Clone, Serialize)]
+pub struct Reading {
+    pub metric_key: String,
+    pub value: f64,
+    /// RFC 3339, stamped when collected so a late send keeps the right time.
+    pub recorded_at: String,
 }
 
 // Shape of the server's errorHandler output.
@@ -91,6 +100,23 @@ impl ApiClient {
             .send()
             .await?;
         Ok(check(resp).await?.json().await?)
+    }
+
+    pub async fn submit_reading(
+        &self,
+        target_id: i64,
+        api_key: &str,
+        reading: &Reading,
+    ) -> Result<(), ApiError> {
+        let resp = self
+            .http
+            .post(format!("{}/targets/{target_id}/metrics", self.base_url))
+            .header("X-Api-Key", api_key)
+            .json(reading)
+            .send()
+            .await?;
+        check(resp).await?;
+        Ok(())
     }
 }
 

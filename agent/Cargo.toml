@@ -27,6 +27,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"
 # Cross-platform hostname lookup.
 hostname = "0.4"
+# CPU, memory and disk readings, cross-platform.
+sysinfo = "0.36"
+# Lets traits have `async fn` methods and still be used as `dyn Trait`.
+async-trait = "0.1"
+# RFC 3339 timestamps (`recorded_at`) from `SystemTime`.
+humantime = "2"
 
 [profile.release]
 # Smaller static binary: strip symbols, whole-program optimisation.

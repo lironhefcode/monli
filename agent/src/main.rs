@@ -1,6 +1,8 @@
 mod api_client;
+mod collectors;
 mod config;
 mod host;
+mod scheduler;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -69,10 +71,16 @@ async fn run(cli: Cli) -> Result<()> {
     .context("fetching metric list")?;
 
     info!(target_id = creds.target_id, count = metrics.len(), "loaded metric list");
-    for m in &metrics {
-        info!(metric_key = %m.metric_key, interval_sec = m.report_interval_sec, "metric");
-    }
-    Ok(())
+
+    scheduler::Scheduler::new(
+        client,
+        creds.target_id,
+        &creds.api_key,
+        collectors::registry(),
+        metrics,
+    )
+    .run()
+    .await
 }
 
 async fn enroll(server: &str, token: &str, path: &Path) -> Result<Credentials> {
