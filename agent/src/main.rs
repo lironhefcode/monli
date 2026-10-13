@@ -27,8 +27,8 @@ struct Cli {
     #[arg(long, requires = "token")]
     server: Option<String>,
 
-    /// Single-use enrollment token. Enrolls this host and overwrites any
-    /// existing credentials.
+    /// Single-use enrollment token. Enrolls this host, overwrites any
+    /// existing credentials, and exits; run again without it to start.
     #[arg(long, requires = "server")]
     token: Option<String>,
 
@@ -57,12 +57,14 @@ async fn main() -> ExitCode {
 
 async fn run(cli: Cli) -> Result<()> {
     // clap's `requires` guarantees server and token come together.
-    let creds = match (cli.server, cli.token) {
-        (Some(server), Some(token)) => enroll(&server, &token, &cli.credentials).await?,
-        _ => config::load(&cli.credentials)?,
-    };
+    // Enrolling is a one-shot step: install.sh runs it, then systemd starts
+    // the long-running agent without a token.
+    if let (Some(server), Some(token)) = (cli.server, cli.token) {
+        enroll(&server, &token, &cli.credentials).await?;
+        return Ok(());
+    }
 
-    // Same path for a fresh enrollment and a reboot.
+    let creds = config::load(&cli.credentials)?;
     let client = ApiClient::new(&creds.server_url).context("building HTTP client")?;
     let metrics = with_retry("fetching metric list", || {
         client.get_metrics(creds.target_id, &creds.api_key)
@@ -83,7 +85,7 @@ async fn run(cli: Cli) -> Result<()> {
     .await
 }
 
-async fn enroll(server: &str, token: &str, path: &Path) -> Result<Credentials> {
+async fn enroll(server: &str, token: &str, path: &Path) -> Result<()> {
     let identity = host::identity()?;
     info!(hostname = %identity.hostname, %server, "enrolling");
 
@@ -105,7 +107,7 @@ async fn enroll(server: &str, token: &str, path: &Path) -> Result<Credentials> {
     };
     config::save(path, &creds)?;
     info!(target_id = creds.target_id, path = %path.display(), "enrolled; credentials saved");
-    Ok(creds)
+    Ok(())
 }
 
 /// Retries `op` with exponential backoff (1s, 2s, 4s, ... capped at 60s)
