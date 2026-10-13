@@ -6,24 +6,25 @@ for the full design (data model, policy resolution, agent design, API).
 ## Layout
 
 - `backend/` — Node.js + TypeScript + Express API server (Postgres via Prisma).
-- `frontend/` — Vue 3 + Nuxt UI (not yet implemented).
+- `frontend/` — Vue 3 + Nuxt UI admin SPA, built into the nginx image.
 - `agent/` — Rust metric-collecting agent (not yet implemented).
-- `nginx/` — reverse proxy config used by `docker compose`.
+- `nginx/` — serves the frontend and proxies `/api/*` to the API (prefix stripped).
 
 ## Quick start (Docker)
 
 ```
 cp .env.example .env          # set POSTGRES_PASSWORD at minimum
 docker compose up -d --build
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 ```
 
 This starts Postgres, the API, and nginx. Migrations run automatically when
-the API container starts. The API is reachable at `http://localhost:8080`
-(change with `HTTP_PORT` in `.env`).
+the API container starts. The UI is at `http://localhost:8080` and the API at
+`http://localhost:8080/api` (change the port with `HTTP_PORT` in `.env`).
 
 For a real deployment, set `PUBLIC_API_URL` to the address your monitored
-hosts can reach — it's embedded in the agent install command.
+hosts can reach, including the `/api` prefix — it's embedded in the agent
+install command.
 
 ## Local development (backend outside Docker)
 
@@ -34,6 +35,7 @@ npm install
 cp backend/.env.example backend/.env
 npm run prisma:migrate --workspace backend
 npm run dev --workspace backend # http://localhost:3000
+npm run dev --workspace frontend # http://localhost:3001, proxies /api to :3000
 ```
 
 ## Why nginx is in front of the API
@@ -60,10 +62,10 @@ and never to a range that also contains the monitored hosts.
 
 ```
 # 1. Mint a single-use token (this is what the UI's "Install Agent" button does)
-curl -X POST http://localhost:8080/agents/enrollment-tokens
+curl -X POST http://localhost:8080/api/agents/enrollment-tokens
 
 # 2. Register as an agent would, exchanging the token for a target-bound API key
-curl -X POST http://localhost:8080/agents/register \
+curl -X POST http://localhost:8080/api/agents/register \
   -H "X-Enrollment-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{"hostname":"web-01","os":"linux","arch":"x86_64"}'

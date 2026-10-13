@@ -5,6 +5,7 @@
   "private": true,
   "license": "ISC",
   "workspaces": [
-    "backend"
+    "backend",
+    "frontend"
   ]
 }
