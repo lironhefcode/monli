@@ -6,6 +6,13 @@ import type {
 } from "../schemas/templates.schema";
 import { HttpError } from "../utils/http-error";
 
+export function listTemplates() {
+  return prisma.template.findMany({
+    select: { id: true, name: true, description: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 export function createTemplate(input: CreateTemplateInput) {
   return prisma.template.create({
     data: {

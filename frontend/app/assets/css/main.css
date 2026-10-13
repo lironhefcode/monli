@@ -56,3 +56,8 @@ body {
   font-size: var(--text-sm); /* 14px body, dense like classic consoles */
   line-height: 1.5;
 }
+
+/* Nuxt UI's 75% opacity is too subtle on the dark slate to read as disabled. */
+button:disabled {
+  opacity: 0.45;
+}

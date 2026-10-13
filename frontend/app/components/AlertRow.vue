@@ -5,14 +5,7 @@ const props = defineProps<{ alert: Alert; now: number }>();
 
 const openedAt = computed(() => new Date(props.alert.openedAt));
 
-const openedAgo = computed(() => {
-  const minutes = Math.max(0, Math.floor((props.now - openedAt.value.getTime()) / 60_000));
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.floor(hours / 24)} d ago`;
-});
+const openedAgo = computed(() => formatAgo(openedAt.value, props.now));
 
 const value = computed(() => {
   const unit = props.alert.metric.unit;

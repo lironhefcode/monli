@@ -7,10 +7,18 @@ import {
   type AddTemplateMetricInput,
   type CreateTemplateInput,
 } from "../schemas/templates.schema";
-import { addTemplateMetric, createTemplate } from "../services/templates.service";
+import { addTemplateMetric, createTemplate, listTemplates } from "../services/templates.service";
 import { asyncHandler } from "../utils/async-handler";
 
 export const templatesRouter = Router();
+
+// GET /templates — list templates (e.g. for assigning to a target)
+templatesRouter.get(
+  "/",
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await listTemplates());
+  })
+);
 
 // POST /templates — create a metric template
 templatesRouter.post(

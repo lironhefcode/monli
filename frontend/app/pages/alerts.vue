@@ -25,44 +25,13 @@ const updatedAtLabel = computed(() =>
   updatedAt.value?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 );
 
-// Ticks the relative "opened" times between polls.
+// Ticks the relative "opened" times along with each poll.
 const now = ref(Date.now());
 
-let pollTimer: ReturnType<typeof setInterval> | undefined;
-
-function startPolling() {
-  stopPolling();
-  pollTimer = setInterval(() => {
-    now.value = Date.now();
-    refresh();
-  }, POLL_INTERVAL_MS);
-}
-
-function stopPolling() {
-  clearInterval(pollTimer);
-  pollTimer = undefined;
-}
-
-// No requests from a tab nobody is looking at; catch up as soon as it's visible.
-function onVisibilityChange() {
-  if (document.hidden) {
-    stopPolling();
-  } else {
-    now.value = Date.now();
-    refresh();
-    startPolling();
-  }
-}
-
-onMounted(() => {
-  startPolling();
-  document.addEventListener("visibilitychange", onVisibilityChange);
-});
-
-onBeforeUnmount(() => {
-  stopPolling();
-  document.removeEventListener("visibilitychange", onVisibilityChange);
-});
+usePolling(() => {
+  now.value = Date.now();
+  refresh();
+}, POLL_INTERVAL_MS);
 </script>
 
 <template>

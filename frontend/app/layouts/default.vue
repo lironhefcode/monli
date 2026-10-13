@@ -5,6 +5,12 @@ const links = [
   { label: "Monitoring", to: "/monitoring" },
   { label: "Setup", to: "/setup" },
 ];
+
+// Section-level match, so /resources/8 still marks Resources as current.
+const route = useRoute();
+function isCurrent(to: string) {
+  return route.path === to || route.path.startsWith(`${to}/`);
+}
 </script>
 
 <template>
@@ -18,6 +24,7 @@ const links = [
             <li v-for="link in links" :key="link.to">
               <NuxtLink
                 :to="link.to"
+                :aria-current="isCurrent(link.to) ? 'page' : undefined"
                 class="nav-link block border-b-[3px] border-transparent px-3 py-3 text-muted hover:text-highlighted lg:border-b-0 lg:border-l-[3px] lg:px-5 lg:py-2"
               >
                 {{ link.label }}
@@ -36,7 +43,7 @@ const links = [
 
 <style scoped>
 /* The status rail: active section is marked by a steel left edge (bottom edge on mobile). */
-.nav-link.router-link-active {
+.nav-link[aria-current="page"] {
   border-color: var(--color-steel);
   color: var(--ui-text-highlighted);
   background: var(--ui-bg-accented);
