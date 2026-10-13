@@ -13,6 +13,11 @@ export function listAlerts(query: ListAlertsQuery) {
       priority: query.priority,
     },
     orderBy: { openedAt: "desc" },
+    // Names for display; select keeps secrets like target.apiKeyHash out.
+    include: {
+      target: { select: { id: true, name: true } },
+      metric: { select: { id: true, metricKey: true, unit: true } },
+    },
   });
 }
 
