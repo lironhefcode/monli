@@ -1,4 +1,4 @@
-import { Prisma, type TemplateMetric } from "@prisma/client";
+import { Prisma, type TargetMetricOverride, type TemplateMetric } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import type {
   AssignTemplateInput,
@@ -34,6 +34,96 @@ async function resolveTemplateDefault(
     where: { metricId, template: { targetTemplates: { some: { targetId } } } },
     orderBy: { id: "asc" },
   });
+}
+
+// Policy fallback chain, narrowest wins: override → target team (team only) →
+// template default. Shared by alerting and the UI so both see the same values.
+function resolvePolicy(
+  templateDefault: TemplateMetric,
+  override: TargetMetricOverride | null | undefined,
+  targetResponsibleTeam: string | null
+) {
+  return {
+    reportIntervalSec: override?.reportIntervalSec ?? templateDefault.reportIntervalSec,
+    condition: override?.condition ?? templateDefault.condition,
+    threshold: override?.threshold ?? templateDefault.threshold,
+    consecutiveBreaches: override?.consecutiveBreaches ?? templateDefault.consecutiveBreaches,
+    severity: override?.severity ?? templateDefault.severity,
+    responsibleTeam:
+      override?.responsibleTeam ?? targetResponsibleTeam ?? templateDefault.responsibleTeam,
+    alertSubject: override?.alertSubject ?? templateDefault.alertSubject,
+    alertDescription: override?.alertDescription ?? templateDefault.alertDescription,
+    priority: override?.priority ?? templateDefault.priority,
+  };
+}
+
+// GET /targets — admin list. Never exposes the API key hash.
+export function listTargets() {
+  return prisma.target.findMany({
+    select: {
+      id: true,
+      name: true,
+      ipAddress: true,
+      status: true,
+      responsibleTeam: true,
+      lastSeenAt: true,
+    },
+    orderBy: { name: "asc" },
+  });
+}
+
+// GET /targets/:id — admin detail: metadata, assigned templates, and the
+// resolved policy of every metric the target inherits.
+export async function getTargetDetail(targetId: number) {
+  const target = await prisma.target.findUnique({
+    where: { id: targetId },
+    omit: { apiKeyHash: true },
+    include: {
+      targetTemplates: {
+        include: { template: { select: { id: true, name: true } } },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+  if (!target) {
+    throw new HttpError(404, "target not found");
+  }
+
+  // Same tie-break as resolveTemplateDefault: lowest template_metrics.id wins.
+  const templateMetrics = await prisma.templateMetric.findMany({
+    where: { template: { targetTemplates: { some: { targetId } } } },
+    orderBy: { id: "asc" },
+    include: {
+      metric: { select: { id: true, metricKey: true, unit: true } },
+      template: { select: { id: true, name: true } },
+    },
+  });
+  const byMetricId = new Map<number, (typeof templateMetrics)[number]>();
+  for (const templateMetric of templateMetrics) {
+    if (!byMetricId.has(templateMetric.metricId)) {
+      byMetricId.set(templateMetric.metricId, templateMetric);
+    }
+  }
+
+  const overrides = await prisma.targetMetricOverride.findMany({
+    where: { targetId, metricId: { in: [...byMetricId.keys()] } },
+  });
+  const overrideByMetricId = new Map(overrides.map((override) => [override.metricId, override]));
+
+  const { targetTemplates, ...metadata } = target;
+  return {
+    ...metadata,
+    templates: targetTemplates.map((targetTemplate) => targetTemplate.template),
+    metrics: [...byMetricId.values()].map((templateMetric) => {
+      const override = overrideByMetricId.get(templateMetric.metricId);
+      return {
+        metric: templateMetric.metric,
+        source: templateMetric.template,
+        overridden: override !== undefined,
+        ...resolvePolicy(templateMetric, override, target.responsibleTeam),
+      };
+    }),
+  };
 }
 
 export async function createTarget(input: CreateTargetInput) {
@@ -179,17 +269,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     where: { targetId_metricId: { targetId, metricId: metric.id } },
   });
 
-  const policy = {
-    condition: override?.condition ?? templateDefault.condition,
-    threshold: override?.threshold ?? templateDefault.threshold,
-    consecutiveBreaches: override?.consecutiveBreaches ?? templateDefault.consecutiveBreaches,
-    severity: override?.severity ?? templateDefault.severity,
-    responsibleTeam:
-      override?.responsibleTeam ?? target.responsibleTeam ?? templateDefault.responsibleTeam,
-    alertSubject: override?.alertSubject ?? templateDefault.alertSubject,
-    alertDescription: override?.alertDescription ?? templateDefault.alertDescription,
-    priority: override?.priority ?? templateDefault.priority,
-  };
+  const policy = resolvePolicy(templateDefault, override, target.responsibleTeam);
 
   const recordedAt = input.recorded_at ? new Date(input.recorded_at) : new Date();
 

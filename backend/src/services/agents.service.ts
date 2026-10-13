@@ -1,24 +1,33 @@
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
-import type { RegisterAgentInput } from "../schemas/agents.schema";
+import type { AgentOs, RegisterAgentInput } from "../schemas/agents.schema";
 import { generateApiKey, hashApiKey } from "../utils/api-key";
 import { HttpError } from "../utils/http-error";
 
 const ENROLLMENT_TOKEN_TTL_MS = 60 * 60 * 1000;
 
-export async function createEnrollmentToken() {
+// The server owns how each OS installs the agent, so the UI only renders it.
+function buildInstallCommand(os: AgentOs, token: string): string {
+  switch (os) {
+    case "linux":
+      // -f: an HTTP error must not be piped into sh. sudo: the script needs root.
+      return (
+        `curl -fsSL ${env.PUBLIC_API_URL}/agents/install.sh | sudo sh -s -- ` +
+        `--server ${env.PUBLIC_API_URL} --token ${token}`
+      );
+  }
+}
+
+export async function createEnrollmentToken(os: AgentOs) {
   const token = generateApiKey();
   const expiresAt = new Date(Date.now() + ENROLLMENT_TOKEN_TTL_MS);
   await prisma.enrollmentToken.create({
     data: { tokenHash: hashApiKey(token), expiresAt },
   });
 
-  const installCommand =
-    // -f: an HTTP error must not be piped into sh. sudo: the script needs root.
-    `curl -fsSL ${env.PUBLIC_API_URL}/agents/install.sh | sudo sh -s -- ` +
-    `--server ${env.PUBLIC_API_URL} --token ${token}`;
+  const installCommand = buildInstallCommand(os, token);
 
-  return { token, expiresAt, serverUrl: env.PUBLIC_API_URL, installCommand };
+  return { token, expiresAt, os, serverUrl: env.PUBLIC_API_URL, installCommand };
 }
 
 export async function registerAgent(token: string, sourceIp: string, input: RegisterAgentInput) {

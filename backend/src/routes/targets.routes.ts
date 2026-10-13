@@ -20,7 +20,9 @@ import {
   assignTemplate,
   createTarget,
   getEffectiveMetrics,
+  getTargetDetail,
   getMetricHistory,
+  listTargets,
   setOverride,
   submitReading,
   unassignTemplate,
@@ -28,6 +30,23 @@ import {
 import { asyncHandler } from "../utils/async-handler";
 
 export const targetsRouter = Router();
+
+// GET /targets — admin-facing: list targets for the UI
+targetsRouter.get(
+  "/",
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json(await listTargets());
+  })
+);
+
+// GET /targets/:id — admin-facing: metadata, templates, resolved metric policies
+targetsRouter.get(
+  "/:id",
+  validate({ params: targetIdParamsSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await getTargetDetail(Number(req.params.id)));
+  })
+);
 
 // POST /targets — manually create a target (network devices, services, etc.
 // that don't run an agent). Agent-monitored hosts are created via

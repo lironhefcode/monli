@@ -26,19 +26,20 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-monli}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-monli}
-      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080/api}
       TRUST_PROXY: 172.28.0.10
     depends_on:
       postgres:
         condition: service_healthy
 
+  # Serves the frontend SPA and proxies /api/* to the api service.
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-8080}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       default:
         ipv4_address: 172.28.0.10

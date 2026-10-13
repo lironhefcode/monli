@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+// OSes the server can build an install command for. Extend alongside the
+// install scripts and agent binaries it serves.
+export const supportedAgentOs = ["linux"] as const;
+
+export const createEnrollmentTokenSchema = z.object({
+  os: z.enum(supportedAgentOs),
+});
+
+export type CreateEnrollmentTokenInput = z.infer<typeof createEnrollmentTokenSchema>;
+export type AgentOs = CreateEnrollmentTokenInput["os"];
+
 export const registerAgentSchema = z.object({
   hostname: z.string().min(1),
   os: z.string().min(1).optional(),

@@ -22,5 +22,26 @@ export const addTemplateMetricSchema = z.object({
   priority: z.enum(["p1", "p2", "p3", "p4"]).default("p3"),
 });
 
+export const templateMetricParamsSchema = templateIdParamsSchema.extend({
+  metricId: z.coerce.number().int().positive(),
+});
+
+// Partial update of a template metric's policy; at least one field.
+export const updateTemplateMetricSchema = z
+  .object({
+    report_interval_sec: z.number().int().positive(),
+    condition: z.enum(["gt", "lt", "gte", "lte", "eq"]),
+    threshold: z.number(),
+    consecutive_breaches: z.number().int().positive(),
+    severity: z.enum(["warning", "critical"]),
+    responsible_team: z.string().nullable(),
+    alert_subject: z.string(),
+    alert_description: z.string().nullable(),
+    priority: z.enum(["p1", "p2", "p3", "p4"]),
+  })
+  .partial()
+  .refine((input) => Object.keys(input).length > 0, { message: "at least one field is required" });
+
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type AddTemplateMetricInput = z.infer<typeof addTemplateMetricSchema>;
+export type UpdateTemplateMetricInput = z.infer<typeof updateTemplateMetricSchema>;
