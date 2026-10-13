@@ -9,10 +9,17 @@ datasource db {
 
 // Catalog: reusable metric definitions
 model Metric {
-  id          Int      @id @default(autoincrement())
-  metricKey   String   @unique @map("metric_key")
+  id          Int     @id @default(autoincrement())
+  metricKey   String  @unique @map("metric_key")
   unit        String?
   description String?
+
+  // Suggested policy, pre-filled when the metric is added to a template.
+  defaultCondition         String? @map("default_condition")
+  defaultThreshold         Float?  @map("default_threshold")
+  defaultSeverity          String? @map("default_severity")
+  defaultPriority          String? @map("default_priority")
+  defaultReportIntervalSec Int?    @map("default_report_interval_sec")
 
   templateMetrics TemplateMetric[]
   overrides       TargetMetricOverride[]
@@ -37,18 +44,18 @@ model Template {
 
 // Join table: metrics in a template + that template's suggested defaults
 model TemplateMetric {
-  id                  Int      @id @default(autoincrement())
-  templateId          Int      @map("template_id")
-  metricId            Int      @map("metric_id")
-  reportIntervalSec   Int      @default(60) @map("report_interval_sec")
+  id                  Int     @id @default(autoincrement())
+  templateId          Int     @map("template_id")
+  metricId            Int     @map("metric_id")
+  reportIntervalSec   Int     @default(60) @map("report_interval_sec")
   condition           String
   threshold           Float
-  consecutiveBreaches Int      @default(1) @map("consecutive_breaches")
-  severity            String   @default("warning")
-  responsibleTeam     String?  @map("responsible_team")
-  alertSubject        String   @default("") @map("alert_subject")
-  alertDescription    String?  @map("alert_description")
-  priority            String   @default("p3")
+  consecutiveBreaches Int     @default(1) @map("consecutive_breaches")
+  severity            String  @default("warning")
+  responsibleTeam     String? @map("responsible_team")
+  alertSubject        String  @default("") @map("alert_subject")
+  alertDescription    String? @map("alert_description")
+  priority            String  @default("p3")
 
   template Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
   metric   Metric   @relation(fields: [metricId], references: [id])
@@ -59,18 +66,18 @@ model TemplateMetric {
 
 // Targets: monitored hosts/services
 model Target {
-  id               Int       @id @default(autoincrement())
-  name             String
-  type             String
-  ipAddress        String?   @map("ip_address")
-  os               String?
-  arch             String?
-  description      String?
-  responsibleTeam  String?   @map("responsible_team")
-  status           String    @default("unknown")
-  lastSeenAt       DateTime? @map("last_seen_at")
-  apiKeyHash       String    @map("api_key_hash")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  id              Int       @id @default(autoincrement())
+  name            String
+  type            String
+  ipAddress       String?   @map("ip_address")
+  os              String?
+  arch            String?
+  description     String?
+  responsibleTeam String?   @map("responsible_team")
+  status          String    @default("unknown")
+  lastSeenAt      DateTime? @map("last_seen_at")
+  apiKeyHash      String    @map("api_key_hash")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   targetTemplates  TargetTemplate[]
   overrides        TargetMetricOverride[]
@@ -135,11 +142,11 @@ model TargetMetricOverride {
 
 // Time-series data
 model MetricReading {
-  id          BigInt   @id @default(autoincrement())
-  targetId    Int      @map("target_id")
-  metricId    Int      @map("metric_id")
-  value       Float
-  recordedAt  DateTime @default(now()) @map("recorded_at")
+  id         BigInt   @id @default(autoincrement())
+  targetId   Int      @map("target_id")
+  metricId   Int      @map("metric_id")
+  value      Float
+  recordedAt DateTime @default(now()) @map("recorded_at")
 
   target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
   metric Metric @relation(fields: [metricId], references: [id])
@@ -150,21 +157,21 @@ model MetricReading {
 
 // Alerts: snapshot of resolved policy + response metadata at breach time
 model Alert {
-  id                 Int       @id @default(autoincrement())
-  targetId           Int       @map("target_id")
-  metricId           Int       @map("metric_id")
-  triggeredValue     Float     @map("triggered_value")
-  severity           String
-  status             String    @default("open")
-  openedAt           DateTime  @default(now()) @map("opened_at")
-  resolvedAt         DateTime? @map("resolved_at")
-  responsibleTeam    String    @map("responsible_team")
-  subject            String
-  description        String?
-  priority           String
-  firstResponseAt    DateTime? @map("first_response_at")
-  firstResponseBy    String?   @map("first_response_by")
-  firstResponseNote  String?   @map("first_response_note")
+  id                Int       @id @default(autoincrement())
+  targetId          Int       @map("target_id")
+  metricId          Int       @map("metric_id")
+  triggeredValue    Float     @map("triggered_value")
+  severity          String
+  status            String    @default("open")
+  openedAt          DateTime  @default(now()) @map("opened_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  responsibleTeam   String    @map("responsible_team")
+  subject           String
+  description       String?
+  priority          String
+  firstResponseAt   DateTime? @map("first_response_at")
+  firstResponseBy   String?   @map("first_response_by")
+  firstResponseNote String?   @map("first_response_note")
 
   target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
   metric Metric @relation(fields: [metricId], references: [id])

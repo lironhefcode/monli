@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TargetDetail, TargetMetric, TemplateSummary } from "~/types/targets";
+import type { TargetDetail, TemplateSummary } from "~/types/targets";
 
 const route = useRoute();
 const targetId = computed(() => Number(route.params.id));
@@ -22,11 +22,6 @@ const templateOptions = computed(() => {
 const selectedTemplateId = ref<number | undefined>();
 const busy = ref(false);
 
-function apiError(err: unknown, fallback: string) {
-  // The backend's error handler responds with { error: string }.
-  return (err as { data?: { error?: string } }).data?.error ?? fallback;
-}
-
 async function addTemplate() {
   if (selectedTemplateId.value === undefined) return;
   busy.value = true;
@@ -38,7 +33,7 @@ async function addTemplate() {
     selectedTemplateId.value = undefined;
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't add template", description: apiError(err, "Could not reach the server"), color: "error" });
+    toast.add({ title: "Couldn't add template", description: apiErrorMessage(err), color: "error" });
   } finally {
     busy.value = false;
   }
@@ -50,24 +45,12 @@ async function removeTemplate(templateId: number) {
     await $fetch(`/api/targets/${targetId.value}/templates/${templateId}`, { method: "DELETE" });
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't remove template", description: apiError(err, "Could not reach the server"), color: "error" });
+    toast.add({ title: "Couldn't remove template", description: apiErrorMessage(err), color: "error" });
   } finally {
     busy.value = false;
   }
 }
 
-const conditionSymbols: Record<TargetMetric["condition"], string> = {
-  gt: ">",
-  gte: "≥",
-  lt: "<",
-  lte: "≤",
-  eq: "=",
-};
-
-function formatRule(metric: TargetMetric) {
-  const unit = metric.metric.unit ? ` ${metric.metric.unit}` : "";
-  return `${conditionSymbols[metric.condition]} ${metric.threshold}${unit}`;
-}
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -194,7 +177,7 @@ function formatDate(value: string | null) {
                 <tr v-for="metric in target.metrics" :key="metric.metric.id" class="border-b border-default last:border-b-0">
                   <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ metric.metric.metricKey }}</td>
                   <td class="px-4 py-2.5 font-mono tabular-nums">
-                    {{ formatRule(metric) }}
+                    {{ formatRule(metric.condition, metric.threshold, metric.metric.unit) }}
                     <span v-if="metric.consecutiveBreaches > 1" class="font-sans text-muted">
                       for {{ metric.consecutiveBreaches }} readings
                     </span>

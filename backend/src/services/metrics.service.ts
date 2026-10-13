@@ -10,6 +10,11 @@ export async function createMetric(input: CreateMetricInput) {
         metricKey: input.metric_key,
         unit: input.unit,
         description: input.description,
+        defaultCondition: input.default_condition,
+        defaultThreshold: input.default_threshold,
+        defaultSeverity: input.default_severity,
+        defaultPriority: input.default_priority,
+        defaultReportIntervalSec: input.default_report_interval_sec,
       },
     });
   } catch (err) {
