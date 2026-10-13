@@ -1,2 +1,58 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Monli console theme: blue-grey slate in the tradition of Icinga/Grafana,
+   with the classic monitoring status colours reserved for state. */
+@theme static {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type scale: 12 / 14 / 16 / 20 / 26 */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
+
+  --color-slate-base: #1b1f27;
+  --color-panel: #232934;
+  --color-rule: #343c4a;
+  --color-steel: #5b9bd5;
+
+  --color-status-ok: #3fa66b;
+  --color-status-warn: #e0a43a;
+  --color-status-crit: #e5534b;
+  --color-status-unknown: #8b7fd1;
+}
+
+/* Unlayered, so these win over Nuxt UI's defaults in @layer theme. */
+.dark {
+  --ui-bg: var(--color-slate-base);
+  --ui-bg-muted: var(--color-panel);
+  --ui-bg-elevated: var(--color-panel);
+  --ui-bg-accented: #2c3341;
+  --ui-border: var(--color-rule);
+  --ui-border-muted: var(--color-rule);
+  --ui-border-accented: #46505f;
+
+  --ui-text: #d5dae3;
+  --ui-text-toned: #b4bccb;
+  --ui-text-muted: #8a93a5;
+  --ui-text-dimmed: #6b7487;
+  --ui-text-highlighted: #eef1f6;
+  --ui-text-inverted: var(--color-slate-base);
+
+  --ui-primary: var(--color-steel);
+  --ui-success: var(--color-status-ok);
+  --ui-warning: var(--color-status-warn);
+  --ui-error: var(--color-status-crit);
+
+  --ui-radius: 0.25rem;
+}
+
+body {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  font-size: var(--text-sm); /* 14px body, dense like classic consoles */
+  line-height: 1.5;
+}

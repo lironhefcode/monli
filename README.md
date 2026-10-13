@@ -62,7 +62,9 @@ and never to a range that also contains the monitored hosts.
 
 ```
 # 1. Mint a single-use token (this is what the UI's "Install Agent" button does)
-curl -X POST http://localhost:8080/api/agents/enrollment-tokens
+curl -X POST http://localhost:8080/api/agents/enrollment-tokens \
+  -H "Content-Type: application/json" \
+  -d '{"os":"linux"}'
 
 # 2. Register as an agent would, exchanging the token for a target-bound API key
 curl -X POST http://localhost:8080/api/agents/register \

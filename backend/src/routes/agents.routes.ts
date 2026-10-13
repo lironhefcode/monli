@@ -1,7 +1,12 @@
 import path from "node:path";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { validate } from "../middleware/validate";
-import { registerAgentSchema, type RegisterAgentInput } from "../schemas/agents.schema";
+import {
+  createEnrollmentTokenSchema,
+  registerAgentSchema,
+  type CreateEnrollmentTokenInput,
+  type RegisterAgentInput,
+} from "../schemas/agents.schema";
 import { createEnrollmentToken, registerAgent } from "../services/agents.service";
 import { asyncHandler } from "../utils/async-handler";
 import { HttpError } from "../utils/http-error";
@@ -44,11 +49,13 @@ function normalizeIp(ip: string): string {
 }
 
 // POST /agents/enrollment-tokens — admin-facing: mint a single-use token and
-// the curl command to show the user for installing an agent on a new host.
+// the install command for the requested OS to show the user for installing an
+// agent on a new host.
 agentsRouter.post(
   "/enrollment-tokens",
-  asyncHandler(async (req: Request, res: Response) => {
-    const result = await createEnrollmentToken();
+  validate({ body: createEnrollmentTokenSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, CreateEnrollmentTokenInput>, res: Response) => {
+    const result = await createEnrollmentToken(req.body.os);
     res.status(201).json(result);
   })
 );
