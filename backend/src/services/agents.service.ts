@@ -14,7 +14,8 @@ export async function createEnrollmentToken() {
   });
 
   const installCommand =
-    `curl -sSL ${env.PUBLIC_API_URL}/agents/install.sh | sh -s -- ` +
+    // -f: an HTTP error must not be piped into sh. sudo: the script needs root.
+    `curl -fsSL ${env.PUBLIC_API_URL}/agents/install.sh | sudo sh -s -- ` +
     `--server ${env.PUBLIC_API_URL} --token ${token}`;
 
   return { token, expiresAt, serverUrl: env.PUBLIC_API_URL, installCommand };
