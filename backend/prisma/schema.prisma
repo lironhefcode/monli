@@ -16,8 +16,8 @@ model Metric {
 
   // Suggested policy, pre-filled when the metric is added to a template.
   defaultCondition         String? @map("default_condition")
-  defaultThreshold         Float?  @map("default_threshold")
-  defaultSeverity          String? @map("default_severity")
+  defaultWarningThreshold  Float?  @map("default_warning_threshold")
+  defaultCriticalThreshold Float?  @map("default_critical_threshold")
   defaultPriority          String? @map("default_priority")
   defaultReportIntervalSec Int?    @map("default_report_interval_sec")
 
@@ -48,10 +48,11 @@ model TemplateMetric {
   templateId          Int     @map("template_id")
   metricId            Int     @map("metric_id")
   reportIntervalSec   Int     @default(60) @map("report_interval_sec")
+  // One condition, two levels; at least one threshold is set (app layer).
   condition           String
-  threshold           Float
+  warningThreshold    Float?  @map("warning_threshold")
+  criticalThreshold   Float?  @map("critical_threshold")
   consecutiveBreaches Int     @default(1) @map("consecutive_breaches")
-  severity            String  @default("warning")
   responsibleTeam     String? @map("responsible_team")
   alertSubject        String  @default("") @map("alert_subject")
   alertDescription    String? @map("alert_description")
@@ -125,9 +126,9 @@ model TargetMetricOverride {
   metricId            Int     @map("metric_id")
   reportIntervalSec   Int?    @map("report_interval_sec")
   condition           String?
-  threshold           Float?
+  warningThreshold    Float?  @map("warning_threshold")
+  criticalThreshold   Float?  @map("critical_threshold")
   consecutiveBreaches Int?    @map("consecutive_breaches")
-  severity            String?
   responsibleTeam     String? @map("responsible_team")
   alertSubject        String? @map("alert_subject")
   alertDescription    String? @map("alert_description")
@@ -161,6 +162,9 @@ model Alert {
   targetId          Int       @map("target_id")
   metricId          Int       @map("metric_id")
   triggeredValue    Float     @map("triggered_value")
+  // Latest reading while open; severity follows the latest reading's level.
+  lastValue         Float?    @map("last_value")
+  lastValueAt       DateTime? @map("last_value_at")
   severity          String
   status            String    @default("open")
   openedAt          DateTime  @default(now()) @map("opened_at")

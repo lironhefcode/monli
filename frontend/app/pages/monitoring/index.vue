@@ -19,12 +19,6 @@ const { data: metrics, error: metricsError } = useFetch<CatalogMetric[]>("/api/m
 const { data: templates, error: templatesError, refresh: refreshTemplates } =
   useFetch<TemplateSummary[]>("/api/templates");
 
-function defaultRule(metric: CatalogMetric) {
-  if (!metric.defaultCondition || metric.defaultThreshold === null) return "—";
-  const rule = formatRule(metric.defaultCondition, metric.defaultThreshold, metric.unit);
-  return metric.defaultSeverity ? `${rule}, ${metric.defaultSeverity}` : rule;
-}
-
 // New template form.
 const toast = useToast();
 const creating = ref(false);
@@ -80,7 +74,7 @@ async function createTemplate() {
               <th scope="col" class="py-2 pl-4 pr-4 font-medium">Metric</th>
               <th scope="col" class="px-4 py-2 font-medium">Unit</th>
               <th scope="col" class="px-4 py-2 font-medium">Description</th>
-              <th scope="col" class="px-4 py-2 font-medium">Default alert</th>
+              <th scope="col" class="px-4 py-2 font-medium">Default levels</th>
             </tr>
           </thead>
           <tbody>
@@ -88,7 +82,16 @@ async function createTemplate() {
               <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ metric.metricKey }}</td>
               <td class="px-4 py-2.5 text-toned">{{ metric.unit ?? "—" }}</td>
               <td class="px-4 py-2.5">{{ metric.description ?? "—" }}</td>
-              <td class="px-4 py-2.5 font-mono tabular-nums">{{ defaultRule(metric) }}</td>
+              <td class="px-4 py-2.5">
+                <LevelRules
+                  v-if="metric.defaultCondition"
+                  :condition="metric.defaultCondition"
+                  :warning-threshold="metric.defaultWarningThreshold"
+                  :critical-threshold="metric.defaultCriticalThreshold"
+                  :unit="metric.unit"
+                />
+                <span v-else>—</span>
+              </td>
             </tr>
           </tbody>
         </table>

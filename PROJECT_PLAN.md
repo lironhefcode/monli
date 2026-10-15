@@ -20,7 +20,7 @@ historical metric charts.
 ## Core Concepts
 
 - **Metric**: a reusable, catalog-level definition of something measurable
-  (e.g. `cpu_percent`, `ping_latency_ms`). Defined once, reused everywhere.
+  (e.g. `cpu_utilization`, `ping_latency_ms`). Defined once, reused everywhere.
 - **Metric Template**: a named, reusable bundle of metrics (e.g. "Linux host",
   "Ping check") used purely for **mass-applying** metrics to targets in the
   UI. Templates carry _suggested default_ policies per metric, but are not
@@ -75,7 +75,7 @@ agent. Instead:
 -- Catalog: reusable metric definitions
 CREATE TABLE metrics (
   id          SERIAL PRIMARY KEY,
-  metric_key  TEXT NOT NULL UNIQUE,     -- e.g. "cpu_percent", "ping_latency_ms"
+  metric_key  TEXT NOT NULL UNIQUE,     -- e.g. "cpu_utilization", "ping_latency_ms"
   unit        TEXT,
   description TEXT
 );

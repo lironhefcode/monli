@@ -5,8 +5,8 @@ export const createMetricSchema = z.object({
   unit: z.string().optional(),
   description: z.string().optional(),
   default_condition: z.enum(["gt", "lt", "gte", "lte", "eq"]).optional(),
-  default_threshold: z.number().optional(),
-  default_severity: z.enum(["warning", "critical"]).optional(),
+  default_warning_threshold: z.number().optional(),
+  default_critical_threshold: z.number().optional(),
   default_priority: z.enum(["p1", "p2", "p3", "p4"]).optional(),
   default_report_interval_sec: z.number().int().positive().optional(),
 });

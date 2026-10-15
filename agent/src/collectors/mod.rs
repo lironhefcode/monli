@@ -21,8 +21,8 @@ pub type Registry = HashMap<&'static str, Arc<dyn Collector>>;
 
 pub fn registry() -> Registry {
     let mut registry: Registry = HashMap::new();
-    registry.insert("cpu_percent", Arc::new(cpu::CpuPercent::new()));
-    registry.insert("memory_used_pct", Arc::new(memory::MemoryUsedPct));
-    registry.insert("disk_used_pct", Arc::new(disk::DiskUsedPct));
+    registry.insert("cpu_utilization", Arc::new(cpu::CpuPercent::new()));
+    registry.insert("memory_utilization", Arc::new(memory::MemoryUsedPct));
+    registry.insert("disk_utilization", Arc::new(disk::DiskUsedPct));
     registry
 }

@@ -5,6 +5,7 @@ import type {
   CreateTemplateInput,
   UpdateTemplateMetricInput,
 } from "../schemas/templates.schema";
+import { assertValidThresholds } from "../utils/alert-levels";
 import { HttpError } from "../utils/http-error";
 
 export function listTemplates() {
@@ -40,15 +41,28 @@ export async function updateTemplateMetric(
   metricId: number,
   input: UpdateTemplateMetricInput
 ) {
+  const existing = await prisma.templateMetric.findUnique({
+    where: { templateId_metricId: { templateId, metricId } },
+  });
+  if (!existing) {
+    throw new HttpError(404, "metric is not in this template");
+  }
+  // Validate the merged result, since a patch may change only one side.
+  assertValidThresholds(
+    input.condition ?? existing.condition,
+    input.warning_threshold !== undefined ? input.warning_threshold : existing.warningThreshold,
+    input.critical_threshold !== undefined ? input.critical_threshold : existing.criticalThreshold
+  );
+
   try {
     return await prisma.templateMetric.update({
       where: { templateId_metricId: { templateId, metricId } },
       data: {
         reportIntervalSec: input.report_interval_sec,
         condition: input.condition,
-        threshold: input.threshold,
+        warningThreshold: input.warning_threshold,
+        criticalThreshold: input.critical_threshold,
         consecutiveBreaches: input.consecutive_breaches,
-        severity: input.severity,
         responsibleTeam: input.responsible_team,
         alertSubject: input.alert_subject,
         alertDescription: input.alert_description,
@@ -97,6 +111,8 @@ export async function addTemplateMetric(
     throw new HttpError(404, "metric not found");
   }
 
+  assertValidThresholds(input.condition, input.warning_threshold, input.critical_threshold);
+
   try {
     return await prisma.templateMetric.create({
       data: {
@@ -104,9 +120,9 @@ export async function addTemplateMetric(
         metricId: input.metric_id,
         reportIntervalSec: input.report_interval_sec,
         condition: input.condition,
-        threshold: input.threshold,
+        warningThreshold: input.warning_threshold,
+        criticalThreshold: input.critical_threshold,
         consecutiveBreaches: input.consecutive_breaches,
-        severity: input.severity,
         responsibleTeam: input.responsible_team,
         alertSubject: input.alert_subject,
         alertDescription: input.alert_description,

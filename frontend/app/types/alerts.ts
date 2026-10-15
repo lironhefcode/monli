@@ -7,6 +7,8 @@ export interface Alert {
   subject: string;
   description: string | null;
   triggeredValue: number;
+  lastValue: number | null;
+  lastValueAt: string | null;
   openedAt: string;
   responsibleTeam: string;
   target: { id: number; name: string };
