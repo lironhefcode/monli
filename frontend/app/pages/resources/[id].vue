@@ -167,7 +167,6 @@ function formatDate(value: string | null) {
                 <tr>
                   <th scope="col" class="py-2 pl-4 pr-4 font-medium">Metric</th>
                   <th scope="col" class="px-4 py-2 font-medium">Alert when</th>
-                  <th scope="col" class="px-4 py-2 font-medium">Severity</th>
                   <th scope="col" class="px-4 py-2 font-medium">Priority</th>
                   <th scope="col" class="px-4 py-2 font-medium">Interval</th>
                   <th scope="col" class="px-4 py-2 font-medium">From</th>
@@ -176,14 +175,16 @@ function formatDate(value: string | null) {
               <tbody>
                 <tr v-for="metric in target.metrics" :key="metric.metric.id" class="border-b border-default last:border-b-0">
                   <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ metric.metric.metricKey }}</td>
-                  <td class="px-4 py-2.5 font-mono tabular-nums">
-                    {{ formatRule(metric.condition, metric.threshold, metric.metric.unit) }}
-                    <span v-if="metric.consecutiveBreaches > 1" class="font-sans text-muted">
-                      for {{ metric.consecutiveBreaches }} readings
+                  <td class="px-4 py-2.5">
+                    <LevelRules
+                      :condition="metric.condition"
+                      :warning-threshold="metric.warningThreshold"
+                      :critical-threshold="metric.criticalThreshold"
+                      :unit="metric.metric.unit"
+                    />
+                    <span v-if="metric.consecutiveBreaches > 1" class="block text-muted">
+                      after {{ metric.consecutiveBreaches }} readings in a row
                     </span>
-                  </td>
-                  <td class="px-4 py-2.5" :class="metric.severity === 'critical' ? 'text-error' : 'text-warning'">
-                    {{ metric.severity === "critical" ? "Critical" : "Warning" }}
                   </td>
                   <td class="px-4 py-2.5 text-toned">{{ metric.priority.toUpperCase() }}</td>
                   <td class="px-4 py-2.5 tabular-nums">{{ metric.reportIntervalSec }} s</td>

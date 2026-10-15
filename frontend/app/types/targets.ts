@@ -17,9 +17,9 @@ export interface TargetMetric {
   overridden: boolean;
   reportIntervalSec: number;
   condition: "gt" | "lt" | "gte" | "lte" | "eq";
-  threshold: number;
+  warningThreshold: number | null;
+  criticalThreshold: number | null;
   consecutiveBreaches: number;
-  severity: "warning" | "critical";
   responsibleTeam: string | null;
   priority: "p1" | "p2" | "p3" | "p4";
 }

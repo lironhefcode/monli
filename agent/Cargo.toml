@@ -34,6 +34,10 @@ async-trait = "0.1"
 # RFC 3339 timestamps (`recorded_at`) from `SystemTime`.
 humantime = "2"
 
+[target.'cfg(unix)'.dependencies]
+# statvfs(), for inode usage (no safe wrapper in std or sysinfo).
+libc = "0.2"
+
 [profile.release]
 # Smaller static binary: strip symbols, whole-program optimisation.
 strip = true

@@ -9,8 +9,8 @@ export interface CatalogMetric {
   unit: string | null;
   description: string | null;
   defaultCondition: Condition | null;
-  defaultThreshold: number | null;
-  defaultSeverity: Severity | null;
+  defaultWarningThreshold: number | null;
+  defaultCriticalThreshold: number | null;
   defaultPriority: Priority | null;
   defaultReportIntervalSec: number | null;
 }
@@ -21,9 +21,9 @@ export interface TemplateMetric {
   metricId: number;
   reportIntervalSec: number;
   condition: Condition;
-  threshold: number;
+  warningThreshold: number | null;
+  criticalThreshold: number | null;
   consecutiveBreaches: number;
-  severity: Severity;
   responsibleTeam: string | null;
   alertSubject: string;
   alertDescription: string | null;
@@ -45,9 +45,9 @@ export interface TemplateDetail {
 export interface TemplateMetricInput {
   report_interval_sec: number;
   condition: Condition;
-  threshold: number;
+  warning_threshold: number | null;
+  critical_threshold: number | null;
   consecutive_breaches: number;
-  severity: Severity;
   responsible_team: string | null;
   alert_subject: string;
   alert_description: string | null;

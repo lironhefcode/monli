@@ -25,6 +25,23 @@ const updatedAtLabel = computed(() =>
   updatedAt.value?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 );
 
+const toast = useToast();
+const resolvingId = ref<number | null>(null);
+
+// Manual resolve; the next breaching reading opens a new alert.
+async function resolveAlert(alert: Alert) {
+  resolvingId.value = alert.id;
+  try {
+    await $fetch(`/api/alerts/${alert.id}/resolve`, { method: "POST" });
+    await refresh();
+    toast.add({ title: "Alert resolved", description: alert.subject, color: "success" });
+  } catch (err) {
+    toast.add({ title: "Couldn't resolve alert", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    resolvingId.value = null;
+  }
+}
+
 // Ticks the relative "opened" times along with each poll.
 const now = ref(Date.now());
 
@@ -78,7 +95,14 @@ usePolling(() => {
             </tr>
           </thead>
           <tbody>
-            <AlertRow v-for="alert in alerts" :key="alert.id" :alert="alert" :now="now" />
+            <AlertRow
+              v-for="alert in alerts"
+              :key="alert.id"
+              :alert="alert"
+              :now="now"
+              :resolving="resolvingId === alert.id"
+              @resolve="resolveAlert"
+            />
           </tbody>
         </table>
       </div>

@@ -6,25 +6,15 @@ import type {
   OverrideInput,
   SubmitReadingInput,
 } from "../schemas/targets.schema";
+import {
+  assertValidThresholds,
+  DEFAULT_ALERT_SUBJECT,
+  levelOf,
+  renderMessage,
+  type Level,
+} from "../utils/alert-levels";
 import { generateApiKey, hashApiKey } from "../utils/api-key";
 import { HttpError } from "../utils/http-error";
-
-function evaluateBreach(value: number, condition: string, threshold: number): boolean {
-  switch (condition) {
-    case "gt":
-      return value > threshold;
-    case "gte":
-      return value >= threshold;
-    case "lt":
-      return value < threshold;
-    case "lte":
-      return value <= threshold;
-    case "eq":
-      return value === threshold;
-    default:
-      return false;
-  }
-}
 
 async function resolveTemplateDefault(
   targetId: number,
@@ -46,9 +36,9 @@ function resolvePolicy(
   return {
     reportIntervalSec: override?.reportIntervalSec ?? templateDefault.reportIntervalSec,
     condition: override?.condition ?? templateDefault.condition,
-    threshold: override?.threshold ?? templateDefault.threshold,
+    warningThreshold: override?.warningThreshold ?? templateDefault.warningThreshold,
+    criticalThreshold: override?.criticalThreshold ?? templateDefault.criticalThreshold,
     consecutiveBreaches: override?.consecutiveBreaches ?? templateDefault.consecutiveBreaches,
-    severity: override?.severity ?? templateDefault.severity,
     responsibleTeam:
       override?.responsibleTeam ?? targetResponsibleTeam ?? templateDefault.responsibleTeam,
     alertSubject: override?.alertSubject ?? templateDefault.alertSubject,
@@ -187,6 +177,16 @@ export async function setOverride(targetId: number, input: OverrideInput) {
     );
   }
 
+  const existing = await prisma.targetMetricOverride.findUnique({
+    where: { targetId_metricId: { targetId, metricId: input.metric_id } },
+  });
+  // Validate the thresholds alerting would actually use after this change.
+  assertValidThresholds(
+    input.condition ?? existing?.condition ?? templateDefault.condition,
+    input.warning_threshold ?? existing?.warningThreshold ?? templateDefault.warningThreshold,
+    input.critical_threshold ?? existing?.criticalThreshold ?? templateDefault.criticalThreshold
+  );
+
   return prisma.targetMetricOverride.upsert({
     where: { targetId_metricId: { targetId, metricId: input.metric_id } },
     create: {
@@ -194,9 +194,9 @@ export async function setOverride(targetId: number, input: OverrideInput) {
       metricId: input.metric_id,
       reportIntervalSec: input.report_interval_sec,
       condition: input.condition,
-      threshold: input.threshold,
+      warningThreshold: input.warning_threshold,
+      criticalThreshold: input.critical_threshold,
       consecutiveBreaches: input.consecutive_breaches,
-      severity: input.severity,
       responsibleTeam: input.responsible_team,
       alertSubject: input.alert_subject,
       alertDescription: input.alert_description,
@@ -205,9 +205,9 @@ export async function setOverride(targetId: number, input: OverrideInput) {
     update: {
       reportIntervalSec: input.report_interval_sec,
       condition: input.condition,
-      threshold: input.threshold,
+      warningThreshold: input.warning_threshold,
+      criticalThreshold: input.critical_threshold,
       consecutiveBreaches: input.consecutive_breaches,
-      severity: input.severity,
       responsibleTeam: input.responsible_team,
       alertSubject: input.alert_subject,
       alertDescription: input.alert_description,
@@ -287,38 +287,64 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     data: { lastSeenAt: recordedAt, status: "up" },
   });
 
-  if (evaluateBreach(input.value, policy.condition, policy.threshold)) {
+  const level = levelOf(input.value, policy.condition, policy.warningThreshold, policy.criticalThreshold);
+  const openAlert = await prisma.alert.findFirst({
+    where: { targetId, metricId: metric.id, status: "open" },
+  });
+
+  const message = (current: Level) => {
+    const context = {
+      metric: metric.metricKey,
+      host: target.name,
+      value: input.value,
+      unit: metric.unit,
+      severity: current,
+      threshold: (current === "critical" ? policy.criticalThreshold : policy.warningThreshold) ?? 0,
+    };
+    return {
+      subject: renderMessage(policy.alertSubject.trim() || DEFAULT_ALERT_SUBJECT, context),
+      description: policy.alertDescription ? renderMessage(policy.alertDescription, context) : null,
+    };
+  };
+
+  if (openAlert) {
+    // One alert per (target, metric): it follows the level, and a single
+    // healthy reading resolves it.
+    await prisma.alert.update({
+      where: { id: openAlert.id },
+      data: level
+        ? { lastValue: input.value, lastValueAt: recordedAt, severity: level, ...message(level) }
+        : { lastValue: input.value, lastValueAt: recordedAt, status: "resolved", resolvedAt: recordedAt },
+    });
+  } else if (level) {
+    // consecutive_breaches guards against flapping: the last N readings (this
+    // one included) must all breach some level before an alert opens.
     const recentReadings = await prisma.metricReading.findMany({
       where: { targetId, metricId: metric.id },
       orderBy: { recordedAt: "desc" },
       take: policy.consecutiveBreaches,
     });
-
     const allBreached =
       recentReadings.length === policy.consecutiveBreaches &&
-      recentReadings.every((reading) =>
-        evaluateBreach(reading.value, policy.condition, policy.threshold)
+      recentReadings.every(
+        (recent) =>
+          levelOf(recent.value, policy.condition, policy.warningThreshold, policy.criticalThreshold) !== null
       );
 
-    if (allBreached && policy.responsibleTeam) {
-      const existingOpenAlert = await prisma.alert.findFirst({
-        where: { targetId, metricId: metric.id, status: "open" },
+    if (allBreached) {
+      await prisma.alert.create({
+        data: {
+          targetId,
+          metricId: metric.id,
+          triggeredValue: input.value,
+          lastValue: input.value,
+          lastValueAt: recordedAt,
+          severity: level,
+          responsibleTeam: policy.responsibleTeam,
+          priority: policy.priority,
+          ...message(level),
+        },
       });
-
-      if (!existingOpenAlert) {
-        await prisma.alert.create({
-          data: {
-            targetId,
-            metricId: metric.id,
-            triggeredValue: input.value,
-            severity: policy.severity,
-            responsibleTeam: policy.responsibleTeam,
-            subject: policy.alertSubject,
-            description: policy.alertDescription,
-            priority: policy.priority,
-          },
-        });
-      }
     }
   }
 
