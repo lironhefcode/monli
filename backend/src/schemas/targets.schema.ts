@@ -42,8 +42,10 @@ export const submitReadingSchema = z.object({
   recorded_at: z.string().datetime().optional(),
 });
 
+export const historyRanges = ["1h", "6h", "24h", "7d"] as const;
+
 export const historyQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(1000).default(100),
+  range: z.enum(historyRanges).default("1h"),
 });
 
 export type TargetIdParams = z.infer<typeof targetIdParamsSchema>;
@@ -54,3 +56,4 @@ export type AssignTemplateInput = z.infer<typeof assignTemplateSchema>;
 export type OverrideInput = z.infer<typeof overrideSchema>;
 export type SubmitReadingInput = z.infer<typeof submitReadingSchema>;
 export type HistoryQuery = z.infer<typeof historyQuerySchema>;
+export type HistoryRange = (typeof historyRanges)[number];

@@ -41,3 +41,21 @@ export interface TemplateSummary {
   name: string;
   description: string | null;
 }
+
+export type HistoryRange = "1h" | "6h" | "24h" | "7d";
+
+// One time bucket: average and peak of the readings in it.
+export interface HistoryPoint {
+  t: string;
+  avg: number;
+  max: number;
+}
+
+// GET /targets/:id/history?range=…
+export interface TargetHistory {
+  range: HistoryRange;
+  bucketSec: number;
+  from: string;
+  to: string;
+  metrics: { metricId: number; points: HistoryPoint[] }[];
+}

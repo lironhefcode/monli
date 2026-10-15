@@ -9,10 +9,10 @@ import {
   overrideSchema,
   submitReadingSchema,
   targetIdParamsSchema,
-  targetMetricParamsSchema,
   targetTemplateParamsSchema,
   type AssignTemplateInput,
   type CreateTargetInput,
+  type HistoryQuery,
   type OverrideInput,
   type SubmitReadingInput,
 } from "../schemas/targets.schema";
@@ -21,7 +21,7 @@ import {
   createTarget,
   getEffectiveMetrics,
   getTargetDetail,
-  getMetricHistory,
+  getTargetHistory,
   listTargets,
   setOverride,
   submitReading,
@@ -119,15 +119,15 @@ targetsRouter.post(
   })
 );
 
-// GET /targets/:id/metrics/:metricId/history — time-series data for charting
+// GET /targets/:id/history?range=1h|6h|24h|7d — bucketed time series of every
+// metric on the target, for charting
 targetsRouter.get(
-  "/:id/metrics/:metricId/history",
-  validate({ params: targetMetricParamsSchema, query: historyQuerySchema }),
+  "/:id/history",
+  validate({ params: targetIdParamsSchema, query: historyQuerySchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const targetId = Number(req.params.id);
-    const metricId = Number(req.params.metricId);
-    const limit = Number(req.query.limit);
-    const history = await getMetricHistory(targetId, metricId, limit);
+    const { range } = req.query as unknown as HistoryQuery;
+    const history = await getTargetHistory(targetId, range);
     res.json(history);
   })
 );

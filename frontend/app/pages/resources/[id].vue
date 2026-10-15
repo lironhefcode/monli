@@ -1,13 +1,52 @@
 <script setup lang="ts">
-import type { TargetDetail, TemplateSummary } from "~/types/targets";
+import type { HistoryRange, TargetDetail, TargetHistory, TemplateSummary } from "~/types/targets";
 
 const route = useRoute();
+const router = useRouter();
 const targetId = computed(() => Number(route.params.id));
 
 const { data: target, error, refresh } = useFetch<TargetDetail>(() => `/api/targets/${targetId.value}`);
 const { data: allTemplates } = useFetch<TemplateSummary[]>("/api/templates");
 
 const notFound = computed(() => error.value?.statusCode === 404);
+
+// The selected tab and range live in the URL, so reloads and shared links keep them.
+const tabs = [
+  { label: "Details", value: "details" },
+  { label: "Templates & metrics", value: "config" },
+  { label: "Graphs", value: "graphs" },
+];
+const tab = computed({
+  get: () => tabs.find((item) => item.value === route.query.tab)?.value ?? "details",
+  set: (value: string) => router.replace({ query: { ...route.query, tab: value } }),
+});
+
+const ranges: { label: string; value: HistoryRange }[] = [
+  { label: "1h", value: "1h" },
+  { label: "6h", value: "6h" },
+  { label: "24h", value: "24h" },
+  { label: "7d", value: "7d" },
+];
+const range = computed<HistoryRange>({
+  get: () => ranges.find((item) => item.value === route.query.range)?.value ?? "1h",
+  set: (value) => router.replace({ query: { ...route.query, range: value } }),
+});
+
+// History is only fetched while the Graphs tab is open.
+const { data: history, execute: fetchHistory } = useFetch<TargetHistory>(
+  () => `/api/targets/${targetId.value}/history`,
+  { query: { range }, immediate: false, watch: false }
+);
+function loadHistory() {
+  if (tab.value === "graphs") fetchHistory();
+}
+watch([tab, range, targetId], loadHistory, { immediate: true });
+// Agents report about once a minute, so polling faster adds nothing.
+usePolling(loadHistory, 60_000);
+
+const pointsByMetric = computed(
+  () => new Map(history.value?.metrics.map((metric) => [metric.metricId, metric.points]))
+);
 
 const toast = useToast();
 
@@ -83,7 +122,9 @@ function formatDate(value: string | null) {
         <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
       </header>
 
-      <div class="mt-6 space-y-6">
+      <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
+
+      <div v-if="tab === 'details'" class="mt-6">
         <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
           <h2 id="details-title" class="border-b border-default px-4 py-3 text-base font-semibold text-highlighted">Details</h2>
           <dl class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -117,7 +158,9 @@ function formatDate(value: string | null) {
             </div>
           </dl>
         </section>
+      </div>
 
+      <div v-else-if="tab === 'config'" class="mt-6 space-y-6">
         <section aria-labelledby="templates-title" class="rounded-(--ui-radius) border border-default bg-muted">
           <header class="border-b border-default px-4 py-3">
             <h2 id="templates-title" class="text-base font-semibold text-highlighted">Templates</h2>
@@ -195,6 +238,38 @@ function formatDate(value: string | null) {
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+      </div>
+
+      <div v-else class="mt-6">
+        <section aria-labelledby="graphs-title" class="rounded-(--ui-radius) border border-default bg-muted">
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
+            <div>
+              <h2 id="graphs-title" class="text-base font-semibold text-highlighted">Graphs</h2>
+              <p class="text-muted">Average per interval; the shaded band reaches each interval's peak.</p>
+            </div>
+            <UTabs v-model="range" :items="ranges" :content="false" size="xs" aria-label="Time range" />
+          </header>
+
+          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">Assign a template to see graphs.</p>
+          <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
+
+          <div v-else class="grid gap-px bg-(--ui-border) lg:grid-cols-2">
+            <figure v-for="metric in target.metrics" :key="metric.metric.id" class="bg-muted px-4 py-3 lg:last:odd:col-span-2">
+              <figcaption class="mb-2 font-mono text-highlighted">{{ metric.metric.metricKey }}</figcaption>
+              <MetricChart
+                v-if="pointsByMetric.get(metric.metric.id)?.length"
+                :points="pointsByMetric.get(metric.metric.id)!"
+                :from="history.from"
+                :to="history.to"
+                :bucket-sec="history.bucketSec"
+                :unit="metric.metric.unit"
+                :warning-threshold="metric.warningThreshold"
+                :critical-threshold="metric.criticalThreshold"
+              />
+              <p v-else class="flex h-[180px] items-center justify-center text-muted">No readings in this range.</p>
+            </figure>
           </div>
         </section>
       </div>

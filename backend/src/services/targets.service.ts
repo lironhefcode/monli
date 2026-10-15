@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma";
 import type {
   AssignTemplateInput,
   CreateTargetInput,
+  HistoryRange,
   OverrideInput,
   SubmitReadingInput,
 } from "../schemas/targets.schema";
@@ -351,22 +352,54 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
   return reading;
 }
 
-export async function getMetricHistory(targetId: number, metricId: number, limit: number) {
+// Window length and bucket size per range, in seconds. Buckets keep every
+// range at a few hundred points (60-336) however long it is.
+const historyWindows: Record<HistoryRange, { span: number; bucket: number }> = {
+  "1h": { span: 3600, bucket: 60 },
+  "6h": { span: 6 * 3600, bucket: 120 },
+  "24h": { span: 24 * 3600, bucket: 300 },
+  "7d": { span: 7 * 24 * 3600, bucket: 1800 },
+};
+
+export interface HistoryPoint {
+  t: string;
+  avg: number;
+  max: number;
+}
+
+// Readings of every metric on the target within the range, averaged per time
+// bucket. max keeps short spikes visible that the average flattens.
+export async function getTargetHistory(targetId: number, range: HistoryRange) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
     throw new HttpError(404, "target not found");
   }
 
-  const metric = await prisma.metric.findUnique({ where: { id: metricId } });
-  if (!metric) {
-    throw new HttpError(404, "metric not found");
+  const { span, bucket } = historyWindows[range];
+  const rows = await prisma.$queryRaw<{ metric_id: number; t: Date; avg: number; max: number }[]>`
+    SELECT
+      metric_id,
+      to_timestamp(floor(extract(epoch FROM recorded_at) / ${bucket}) * ${bucket}) AS t,
+      avg(value) AS avg,
+      max(value) AS max
+    FROM metric_readings
+    WHERE target_id = ${targetId}
+      AND recorded_at >= now() - make_interval(secs => ${span})
+    GROUP BY metric_id, t
+    ORDER BY metric_id, t
+  `;
+
+  const byMetric = new Map<number, HistoryPoint[]>();
+  for (const row of rows) {
+    const points = byMetric.get(row.metric_id) ?? [];
+    points.push({ t: row.t.toISOString(), avg: Number(row.avg), max: Number(row.max) });
+    byMetric.set(row.metric_id, points);
   }
-
-  const readings = await prisma.metricReading.findMany({
-    where: { targetId, metricId },
-    orderBy: { recordedAt: "desc" },
-    take: limit,
-  });
-
-  return readings.map((reading) => ({ ...reading, id: reading.id.toString() }));
+  return {
+    range,
+    bucketSec: bucket,
+    from: new Date(Date.now() - span * 1000).toISOString(),
+    to: new Date().toISOString(),
+    metrics: [...byMetric].map(([metricId, points]) => ({ metricId, points })),
+  };
 }
