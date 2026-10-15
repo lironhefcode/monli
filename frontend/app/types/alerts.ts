@@ -10,7 +10,7 @@ export interface Alert {
   lastValue: number | null;
   lastValueAt: string | null;
   openedAt: string;
-  responsibleTeam: string;
+  responsibleTeam: string | null;
   target: { id: number; name: string };
   metric: { id: number; metricKey: string; unit: string | null };
 }

@@ -169,7 +169,7 @@ model Alert {
   status            String    @default("open")
   openedAt          DateTime  @default(now()) @map("opened_at")
   resolvedAt        DateTime? @map("resolved_at")
-  responsibleTeam   String    @map("responsible_team")
+  responsibleTeam   String?   @map("responsible_team")
   subject           String
   description       String?
   priority          String

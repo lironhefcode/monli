@@ -316,7 +316,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
         ? { lastValue: input.value, lastValueAt: recordedAt, severity: level, ...message(level) }
         : { lastValue: input.value, lastValueAt: recordedAt, status: "resolved", resolvedAt: recordedAt },
     });
-  } else if (level && policy.responsibleTeam) {
+  } else if (level) {
     // consecutive_breaches guards against flapping: the last N readings (this
     // one included) must all breach some level before an alert opens.
     const recentReadings = await prisma.metricReading.findMany({
