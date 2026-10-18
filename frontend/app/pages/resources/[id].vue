@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HistoryRange, TargetDetail, TargetHistory, TemplateSummary } from "~/types/targets";
+import type { HistoryRange, TargetDetail, TargetHistory, TargetUpdateInput, TemplateSummary } from "~/types/targets";
 
 const route = useRoute();
 const router = useRouter();
@@ -90,6 +90,21 @@ async function removeTemplate(templateId: number) {
   }
 }
 
+const editOpen = ref(false);
+const saving = ref(false);
+
+async function saveDetails(input: TargetUpdateInput) {
+  saving.value = true;
+  try {
+    await $fetch(`/api/targets/${targetId.value}`, { method: "PATCH", body: input });
+    editOpen.value = false;
+    await refresh();
+  } catch (err) {
+    toast.add({ title: "Couldn't save changes", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    saving.value = false;
+  }
+}
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -118,16 +133,33 @@ function formatDate(value: string | null) {
 
     <template v-else>
       <header class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-default pb-4">
-        <h1 class="font-mono text-xl font-semibold text-highlighted">{{ target.name }}</h1>
+        <h1 class="font-mono text-xl font-semibold text-highlighted">{{ displayName(target) }}</h1>
         <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
       </header>
+
+      <UModal v-model:open="editOpen" title="Edit resource">
+        <template #body>
+          <TargetEditForm :target="target" :saving="saving" @submit="saveDetails" @cancel="editOpen = false" />
+        </template>
+      </UModal>
 
       <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
 
       <div v-if="tab === 'details'" class="mt-6">
         <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
-          <h2 id="details-title" class="border-b border-default px-4 py-3 text-base font-semibold text-highlighted">Details</h2>
+          <div class="flex items-center justify-between border-b border-default px-4 py-2">
+            <h2 id="details-title" class="text-base font-semibold text-highlighted">Details</h2>
+            <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editOpen = true" />
+          </div>
           <dl class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <dt class="text-muted">Hostname</dt>
+              <dd class="font-mono text-highlighted">{{ target.name }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">Alias</dt>
+              <dd class="text-highlighted">{{ target.alias ?? "—" }}</dd>
+            </div>
             <div>
               <dt class="text-muted">IP address</dt>
               <dd class="font-mono text-highlighted">{{ target.ipAddress ?? "—" }}</dd>

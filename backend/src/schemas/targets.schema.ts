@@ -19,6 +19,23 @@ export const createTargetSchema = z.object({
   responsible_team: z.string().optional(),
 });
 
+// Free-text label; blank (after trimming) or null clears it.
+const clearableLabel = z
+  .string()
+  .trim()
+  .max(100)
+  .transform((value) => value || null)
+  .nullable();
+
+// Only fields present in the body change.
+export const updateTargetSchema = z
+  .object({
+    alias: clearableLabel,
+    responsible_team: clearableLabel,
+  })
+  .partial()
+  .refine((input) => Object.keys(input).length > 0, { message: "at least one field is required" });
+
 export const assignTemplateSchema = z.object({
   template_id: z.number().int().positive(),
 });
@@ -52,6 +69,7 @@ export type TargetIdParams = z.infer<typeof targetIdParamsSchema>;
 export type TargetTemplateParams = z.infer<typeof targetTemplateParamsSchema>;
 export type TargetMetricParams = z.infer<typeof targetMetricParamsSchema>;
 export type CreateTargetInput = z.infer<typeof createTargetSchema>;
+export type UpdateTargetInput = z.infer<typeof updateTargetSchema>;
 export type AssignTemplateInput = z.infer<typeof assignTemplateSchema>;
 export type OverrideInput = z.infer<typeof overrideSchema>;
 export type SubmitReadingInput = z.infer<typeof submitReadingSchema>;

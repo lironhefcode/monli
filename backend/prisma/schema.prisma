@@ -68,7 +68,10 @@ model TemplateMetric {
 // Targets: monitored hosts/services
 model Target {
   id              Int       @id @default(autoincrement())
+  // Hostname reported by the agent; enrollment matches on it, so it never changes.
   name            String
+  // Optional display name shown instead of name.
+  alias           String?
   type            String
   ipAddress       String?   @map("ip_address")
   os              String?
@@ -170,6 +173,8 @@ model Alert {
   openedAt          DateTime  @default(now()) @map("opened_at")
   resolvedAt        DateTime? @map("resolved_at")
   responsibleTeam   String?   @map("responsible_team")
+  // Target's display name (alias or name) when the alert opened.
+  hostName          String    @map("host_name")
   subject           String
   description       String?
   priority          String

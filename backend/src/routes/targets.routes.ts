@@ -10,11 +10,13 @@ import {
   submitReadingSchema,
   targetIdParamsSchema,
   targetTemplateParamsSchema,
+  updateTargetSchema,
   type AssignTemplateInput,
   type CreateTargetInput,
   type HistoryQuery,
   type OverrideInput,
   type SubmitReadingInput,
+  type UpdateTargetInput,
 } from "../schemas/targets.schema";
 import {
   assignTemplate,
@@ -26,6 +28,7 @@ import {
   setOverride,
   submitReading,
   unassignTemplate,
+  updateTarget,
 } from "../services/targets.service";
 import { asyncHandler } from "../utils/async-handler";
 
@@ -45,6 +48,15 @@ targetsRouter.get(
   validate({ params: targetIdParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     res.json(await getTargetDetail(Number(req.params.id)));
+  })
+);
+
+// PATCH /targets/:id — admin-facing: set or clear alias and responsible team
+targetsRouter.patch(
+  "/:id",
+  validate({ params: targetIdParamsSchema, body: updateTargetSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateTargetInput>, res: Response) => {
+    res.json(await updateTarget(Number(req.params.id), req.body));
   })
 );
 

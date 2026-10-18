@@ -6,6 +6,7 @@ import type {
   HistoryRange,
   OverrideInput,
   SubmitReadingInput,
+  UpdateTargetInput,
 } from "../schemas/targets.schema";
 import {
   assertValidThresholds,
@@ -48,19 +49,21 @@ function resolvePolicy(
   };
 }
 
-// GET /targets — admin list. Never exposes the API key hash.
-export function listTargets() {
-  return prisma.target.findMany({
+// GET /targets — admin list, sorted by displayed name (alias, else name).
+// Never exposes the API key hash.
+export async function listTargets() {
+  const targets = await prisma.target.findMany({
     select: {
       id: true,
       name: true,
+      alias: true,
       ipAddress: true,
       status: true,
       responsibleTeam: true,
       lastSeenAt: true,
     },
-    orderBy: { name: "asc" },
   });
+  return targets.sort((a, b) => (a.alias ?? a.name).localeCompare(b.alias ?? b.name));
 }
 
 // GET /targets/:id — admin detail: metadata, assigned templates, and the
@@ -130,6 +133,21 @@ export async function createTarget(input: CreateTargetInput) {
     omit: { apiKeyHash: true },
   });
   return { target, apiKey };
+}
+
+// Open alerts keep the team and name they opened with; only alerts opened
+// after this use the new values.
+export async function updateTarget(targetId: number, input: UpdateTargetInput) {
+  const target = await prisma.target.findUnique({ where: { id: targetId } });
+  if (!target) {
+    throw new HttpError(404, "target not found");
+  }
+
+  return prisma.target.update({
+    where: { id: targetId },
+    data: { alias: input.alias, responsibleTeam: input.responsible_team },
+    omit: { apiKeyHash: true },
+  });
 }
 
 export async function assignTemplate(targetId: number, input: AssignTemplateInput) {
@@ -293,10 +311,13 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     where: { targetId, metricId: metric.id, status: "open" },
   });
 
+  // An open alert keeps the name it opened with, even if the alias changed since.
+  const hostName = openAlert?.hostName ?? target.alias ?? target.name;
+
   const message = (current: Level) => {
     const context = {
       metric: metric.metricKey,
-      host: target.name,
+      host: hostName,
       value: input.value,
       unit: metric.unit,
       severity: current,
@@ -342,6 +363,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
           lastValueAt: recordedAt,
           severity: level,
           responsibleTeam: policy.responsibleTeam,
+          hostName,
           priority: policy.priority,
           ...message(level),
         },

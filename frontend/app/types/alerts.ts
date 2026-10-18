@@ -11,6 +11,8 @@ export interface Alert {
   lastValueAt: string | null;
   openedAt: string;
   responsibleTeam: string | null;
+  // Resource's displayed name when the alert opened; later renames don't change it.
+  hostName: string;
   target: { id: number; name: string };
   metric: { id: number; metricKey: string; unit: string | null };
 }

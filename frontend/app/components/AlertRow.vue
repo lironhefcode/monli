@@ -27,7 +27,7 @@ const valueTitle = computed(() => {
       <span class="severity-label font-medium">{{ alert.severity === "critical" ? "Critical" : "Warning" }}</span>
     </td>
     <td class="px-4 py-2.5 text-toned">{{ alert.priority.toUpperCase() }}</td>
-    <td class="whitespace-nowrap px-4 py-2.5 font-mono text-highlighted">{{ alert.target.name }}</td>
+    <td class="whitespace-nowrap px-4 py-2.5 font-mono text-highlighted">{{ alert.hostName }}</td>
     <td class="px-4 py-2.5 text-toned">{{ alert.responsibleTeam }}</td>
     <td class="whitespace-nowrap px-4 py-2.5 font-mono">{{ alert.metric.metricKey }}</td>
     <td class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums" :title="valueTitle">{{ value }}</td>

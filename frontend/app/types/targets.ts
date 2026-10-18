@@ -3,7 +3,10 @@ export type TargetStatus = "up" | "down" | "unknown";
 // Item from GET /targets.
 export interface TargetSummary {
   id: number;
+  // Hostname reported by the agent.
   name: string;
+  // Shown instead of name when set (see displayName).
+  alias: string | null;
   ipAddress: string | null;
   status: TargetStatus;
   responsibleTeam: string | null;
@@ -33,6 +36,12 @@ export interface TargetDetail extends TargetSummary {
   createdAt: string;
   templates: { id: number; name: string }[];
   metrics: TargetMetric[];
+}
+
+// Body for PATCH /targets/:id; null clears a field.
+export interface TargetUpdateInput {
+  alias: string | null;
+  responsible_team: string | null;
 }
 
 // Item from GET /templates.
