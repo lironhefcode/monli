@@ -20,6 +20,7 @@ model Metric {
   defaultCriticalThreshold Float?  @map("default_critical_threshold")
   defaultPriority          String? @map("default_priority")
   defaultReportIntervalSec Int?    @map("default_report_interval_sec")
+  defaultAlertSubject      String? @map("default_alert_subject")
 
   templateMetrics TemplateMetric[]
   overrides       TargetMetricOverride[]

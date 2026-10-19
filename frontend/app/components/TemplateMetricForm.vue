@@ -57,6 +57,7 @@ function fromCatalog(metric: CatalogMetric): FormState {
     warning_threshold: metric.defaultWarningThreshold ?? "",
     critical_threshold: metric.defaultCriticalThreshold ?? "",
     priority: metric.defaultPriority ?? fallback.priority,
+    alert_subject: metric.defaultAlertSubject ?? fallback.alert_subject,
   };
 }
 
@@ -87,27 +88,21 @@ watch(selectedMetric, (metric) => {
 
 const priorityOptions = ["p1", "p2", "p3", "p4"].map((value) => ({ label: value.toUpperCase(), value }));
 
-function toThreshold(value: number | ""): number | null {
-  return value === "" || !Number.isFinite(value) ? null : value;
-}
-
 const warning = computed(() => (levelOn.warning ? toThreshold(form.warning_threshold) : null));
 const critical = computed(() => (levelOn.critical ? toThreshold(form.critical_threshold) : null));
 
-// Mirrors the API's rule so the problem shows before saving.
-const thresholdError = computed(() => {
-  if (!levelOn.warning && !levelOn.critical) return "Turn on warning, critical, or both.";
-  if (levelOn.warning && warning.value === null) return "Enter a warning threshold.";
-  if (levelOn.critical && critical.value === null) return "Enter a critical threshold.";
-  if (warning.value === null || critical.value === null) return null;
-  if ((form.condition === "gt" || form.condition === "gte") && warning.value >= critical.value) {
-    return "Warning must be lower than critical.";
-  }
-  if ((form.condition === "lt" || form.condition === "lte") && warning.value <= critical.value) {
-    return "Warning must be higher than critical.";
-  }
-  return null;
-});
+// Both levels off: readings are stored and graphed, but no alert opens,
+// so the alert-only fields are locked.
+const monitorOnly = computed(() => !levelOn.warning && !levelOn.critical);
+
+// Unchecking the last level suggests a 5-minute interval; it stays editable.
+function levelToggled(on: boolean | "indeterminate", otherOn: boolean) {
+  if (on !== true && !otherOn) form.report_interval_sec = 300;
+}
+
+const thresholdError = computed(() =>
+  thresholdProblem(form.condition, levelOn.warning, warning.value, levelOn.critical, critical.value)
+);
 
 const valid = computed(
   () =>
@@ -139,45 +134,46 @@ function submit() {
 
     <fieldset :disabled="metricId === undefined" class="space-y-4">
       <UFormField label="Alert when value is">
-        <USelect v-model="form.condition" :items="[...conditionOptions]" class="w-full sm:w-1/2" />
+        <USelect v-model="form.condition" :items="[...conditionOptions]" :disabled="monitorOnly" class="w-full sm:w-1/2" />
       </UFormField>
 
       <div class="grid gap-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <UCheckbox v-model="levelOn.warning" label="Warning" />
+          <UCheckbox v-model="levelOn.warning" label="Warning" @update:model-value="levelToggled($event, levelOn.critical)" />
           <UFormField label="Warning threshold" :hint="unit ?? undefined">
             <UInput v-model.number="form.warning_threshold" type="number" step="any" :disabled="!levelOn.warning" class="w-full" :ui="{ base: 'disabled:bg-elevated disabled:text-dimmed' }" />
           </UFormField>
         </div>
         <div class="space-y-2">
-          <UCheckbox v-model="levelOn.critical" label="Critical" />
+          <UCheckbox v-model="levelOn.critical" label="Critical" @update:model-value="levelToggled($event, levelOn.warning)" />
           <UFormField label="Critical threshold" :hint="unit ?? undefined">
             <UInput v-model.number="form.critical_threshold" type="number" step="any" :disabled="!levelOn.critical" class="w-full" :ui="{ base: 'disabled:bg-elevated disabled:text-dimmed' }" />
           </UFormField>
         </div>
       </div>
       <p v-if="thresholdError" class="-mt-2 text-error">{{ thresholdError }}</p>
+      <p v-else-if="monitorOnly" class="-mt-2 text-muted">Monitor only: readings are stored and graphed, but no alerts open.</p>
 
       <div class="grid gap-4 sm:grid-cols-3">
         <UFormField label="Priority">
-          <USelect v-model="form.priority" :items="priorityOptions" class="w-full" />
+          <USelect v-model="form.priority" :items="priorityOptions" :disabled="monitorOnly" class="w-full" />
         </UFormField>
         <UFormField label="Report every" hint="seconds">
           <UInput v-model.number="form.report_interval_sec" type="number" min="1" class="w-full" />
         </UFormField>
         <UFormField label="Breaches for alert">
-          <UInput v-model.number="form.consecutive_breaches" type="number" min="1" class="w-full" />
+          <UInput v-model.number="form.consecutive_breaches" type="number" min="1" :disabled="monitorOnly" class="w-full" />
         </UFormField>
       </div>
 
       <UFormField label="Alert subject">
-        <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject" class="w-full" />
+        <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject" :disabled="monitorOnly" class="w-full" />
       </UFormField>
       <UFormField label="Alert description">
-        <UTextarea v-model="form.alert_description" :rows="2" class="w-full" />
+        <UTextarea v-model="form.alert_description" :rows="2" :disabled="monitorOnly" class="w-full" />
       </UFormField>
       <UFormField label="Responsible team" hint="Used when the resource has no team">
-        <UInput v-model="form.responsible_team" class="w-full max-w-xs" />
+        <UInput v-model="form.responsible_team" :disabled="monitorOnly" class="w-full max-w-xs" />
       </UFormField>
     </fieldset>
 

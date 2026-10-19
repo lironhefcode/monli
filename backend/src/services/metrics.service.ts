@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import type { CreateMetricInput } from "../schemas/metrics.schema";
+import type { CreateMetricInput, UpdateMetricDefaultsInput } from "../schemas/metrics.schema";
+import { assertValidThresholds } from "../utils/alert-levels";
 import { HttpError } from "../utils/http-error";
 
 export async function createMetric(input: CreateMetricInput) {
@@ -26,6 +27,32 @@ export async function createMetric(input: CreateMetricInput) {
     }
     throw err;
   }
+}
+
+// Forward-only: template metrics already using this metric keep their copies.
+export async function updateMetricDefaults(metricId: number, input: UpdateMetricDefaultsInput) {
+  const metric = await prisma.metric.findUnique({ where: { id: metricId } });
+  if (!metric) {
+    throw new HttpError(404, "metric not found");
+  }
+
+  // Validate the defaults as they'll be after this change.
+  assertValidThresholds(
+    input.default_condition ?? metric.defaultCondition ?? "gt",
+    input.default_warning_threshold === undefined ? metric.defaultWarningThreshold : input.default_warning_threshold,
+    input.default_critical_threshold === undefined ? metric.defaultCriticalThreshold : input.default_critical_threshold
+  );
+
+  return prisma.metric.update({
+    where: { id: metricId },
+    data: {
+      defaultCondition: input.default_condition,
+      defaultWarningThreshold: input.default_warning_threshold,
+      defaultCriticalThreshold: input.default_critical_threshold,
+      defaultPriority: input.default_priority,
+      defaultAlertSubject: input.default_alert_subject,
+    },
+  });
 }
 
 export function listMetrics() {

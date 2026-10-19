@@ -13,6 +13,16 @@ export interface CatalogMetric {
   defaultCriticalThreshold: number | null;
   defaultPriority: Priority | null;
   defaultReportIntervalSec: number | null;
+  defaultAlertSubject: string | null;
+}
+
+// Body of PATCH /metrics/:id; null clears a threshold or the subject.
+export interface MetricDefaultsInput {
+  default_condition: Condition;
+  default_warning_threshold: number | null;
+  default_critical_threshold: number | null;
+  default_priority: Priority;
+  default_alert_subject: string | null;
 }
 
 // A metric's policy inside a template.
