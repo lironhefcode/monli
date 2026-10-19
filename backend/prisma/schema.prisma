@@ -49,7 +49,8 @@ model TemplateMetric {
   templateId          Int     @map("template_id")
   metricId            Int     @map("metric_id")
   reportIntervalSec   Int     @default(60) @map("report_interval_sec")
-  // One condition, two levels; at least one threshold is set (app layer).
+  // One condition, two levels; a null threshold turns that level off (both
+  // null: monitor only, no alerts).
   condition           String
   warningThreshold    Float?  @map("warning_threshold")
   criticalThreshold   Float?  @map("critical_threshold")
@@ -121,22 +122,24 @@ model TargetTemplate {
   @@map("target_templates")
 }
 
-// Per-(target, metric) override, template-agnostic.
+// Per-(target, metric) customization, template-agnostic: a full copy of the
+// policy that replaces the template's (template edits don't reach it). Null
+// thresholds turn that level off; a null team falls back to the target's team.
 // App-layer rule: metric_id must already be reachable via one of the
 // target's assigned templates before an override can be created.
 model TargetMetricOverride {
   id                  Int     @id @default(autoincrement())
   targetId            Int     @map("target_id")
   metricId            Int     @map("metric_id")
-  reportIntervalSec   Int?    @map("report_interval_sec")
-  condition           String?
+  reportIntervalSec   Int     @map("report_interval_sec")
+  condition           String
   warningThreshold    Float?  @map("warning_threshold")
   criticalThreshold   Float?  @map("critical_threshold")
-  consecutiveBreaches Int?    @map("consecutive_breaches")
+  consecutiveBreaches Int     @map("consecutive_breaches")
   responsibleTeam     String? @map("responsible_team")
-  alertSubject        String? @map("alert_subject")
+  alertSubject        String  @default("") @map("alert_subject")
   alertDescription    String? @map("alert_description")
-  priority            String?
+  priority            String
 
   target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
   metric Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)

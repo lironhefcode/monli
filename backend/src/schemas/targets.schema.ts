@@ -40,17 +40,25 @@ export const assignTemplateSchema = z.object({
   template_id: z.number().int().positive(),
 });
 
+// Blank (after trimming) or null stores null.
+const optionalText = z
+  .string()
+  .trim()
+  .transform((value) => value || null)
+  .nullable();
+
+// PUT body: the whole customized policy. Null thresholds turn a level off;
+// a null team means the target's team is used.
 export const overrideSchema = z.object({
-  metric_id: z.number().int().positive(),
-  report_interval_sec: z.number().int().positive().optional(),
-  condition: z.enum(["gt", "lt", "gte", "lte", "eq"]).optional(),
-  warning_threshold: z.number().optional(),
-  critical_threshold: z.number().optional(),
-  consecutive_breaches: z.number().int().positive().optional(),
-  responsible_team: z.string().optional(),
-  alert_subject: z.string().optional(),
-  alert_description: z.string().optional(),
-  priority: z.enum(["p1", "p2", "p3", "p4"]).optional(),
+  report_interval_sec: z.number().int().positive(),
+  condition: z.enum(["gt", "lt", "gte", "lte", "eq"]),
+  warning_threshold: z.number().nullable(),
+  critical_threshold: z.number().nullable(),
+  consecutive_breaches: z.number().int().positive(),
+  responsible_team: optionalText,
+  alert_subject: z.string().trim(),
+  alert_description: optionalText,
+  priority: z.enum(["p1", "p2", "p3", "p4"]),
 });
 
 export const submitReadingSchema = z.object({

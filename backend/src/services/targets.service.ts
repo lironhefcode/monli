@@ -30,22 +30,26 @@ async function resolveTemplateDefault(
 
 // Policy fallback chain, narrowest wins: override → target team (team only) →
 // template default. Shared by alerting and the UI so both see the same values.
+// A customized metric (override) replaces the template's policy as a whole,
+// null thresholds included. Only the team falls through: override, then the
+// target's team, then the template's.
 function resolvePolicy(
   templateDefault: TemplateMetric,
   override: TargetMetricOverride | null | undefined,
   targetResponsibleTeam: string | null
 ) {
+  const policy = override ?? templateDefault;
   return {
-    reportIntervalSec: override?.reportIntervalSec ?? templateDefault.reportIntervalSec,
-    condition: override?.condition ?? templateDefault.condition,
-    warningThreshold: override?.warningThreshold ?? templateDefault.warningThreshold,
-    criticalThreshold: override?.criticalThreshold ?? templateDefault.criticalThreshold,
-    consecutiveBreaches: override?.consecutiveBreaches ?? templateDefault.consecutiveBreaches,
+    reportIntervalSec: policy.reportIntervalSec,
+    condition: policy.condition,
+    warningThreshold: policy.warningThreshold,
+    criticalThreshold: policy.criticalThreshold,
+    consecutiveBreaches: policy.consecutiveBreaches,
     responsibleTeam:
       override?.responsibleTeam ?? targetResponsibleTeam ?? templateDefault.responsibleTeam,
-    alertSubject: override?.alertSubject ?? templateDefault.alertSubject,
-    alertDescription: override?.alertDescription ?? templateDefault.alertDescription,
-    priority: override?.priority ?? templateDefault.priority,
+    alertSubject: policy.alertSubject,
+    alertDescription: policy.alertDescription,
+    priority: policy.priority,
   };
 }
 
@@ -114,6 +118,8 @@ export async function getTargetDetail(targetId: number) {
         metric: templateMetric.metric,
         source: templateMetric.template,
         overridden: override !== undefined,
+        // The customized team itself; responsibleTeam below is the resolved one.
+        customTeam: override?.responsibleTeam ?? null,
         ...resolvePolicy(templateMetric, override, target.responsibleTeam),
       };
     }),
@@ -182,13 +188,15 @@ export async function unassignTemplate(targetId: number, templateId: number) {
   }
 }
 
-export async function setOverride(targetId: number, input: OverrideInput) {
+// Customize a metric for one target: the stored policy replaces the template's
+// as a whole, so later template edits don't reach it.
+export async function setOverride(targetId: number, metricId: number, input: OverrideInput) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
     throw new HttpError(404, "target not found");
   }
 
-  const templateDefault = await resolveTemplateDefault(targetId, input.metric_id);
+  const templateDefault = await resolveTemplateDefault(targetId, metricId);
   if (!templateDefault) {
     throw new HttpError(
       422,
@@ -196,43 +204,32 @@ export async function setOverride(targetId: number, input: OverrideInput) {
     );
   }
 
-  const existing = await prisma.targetMetricOverride.findUnique({
-    where: { targetId_metricId: { targetId, metricId: input.metric_id } },
-  });
-  // Validate the thresholds alerting would actually use after this change.
-  assertValidThresholds(
-    input.condition ?? existing?.condition ?? templateDefault.condition,
-    input.warning_threshold ?? existing?.warningThreshold ?? templateDefault.warningThreshold,
-    input.critical_threshold ?? existing?.criticalThreshold ?? templateDefault.criticalThreshold
-  );
+  assertValidThresholds(input.condition, input.warning_threshold, input.critical_threshold);
 
+  const policy = {
+    reportIntervalSec: input.report_interval_sec,
+    condition: input.condition,
+    warningThreshold: input.warning_threshold,
+    criticalThreshold: input.critical_threshold,
+    consecutiveBreaches: input.consecutive_breaches,
+    responsibleTeam: input.responsible_team,
+    alertSubject: input.alert_subject,
+    alertDescription: input.alert_description,
+    priority: input.priority,
+  };
   return prisma.targetMetricOverride.upsert({
-    where: { targetId_metricId: { targetId, metricId: input.metric_id } },
-    create: {
-      targetId,
-      metricId: input.metric_id,
-      reportIntervalSec: input.report_interval_sec,
-      condition: input.condition,
-      warningThreshold: input.warning_threshold,
-      criticalThreshold: input.critical_threshold,
-      consecutiveBreaches: input.consecutive_breaches,
-      responsibleTeam: input.responsible_team,
-      alertSubject: input.alert_subject,
-      alertDescription: input.alert_description,
-      priority: input.priority,
-    },
-    update: {
-      reportIntervalSec: input.report_interval_sec,
-      condition: input.condition,
-      warningThreshold: input.warning_threshold,
-      criticalThreshold: input.critical_threshold,
-      consecutiveBreaches: input.consecutive_breaches,
-      responsibleTeam: input.responsible_team,
-      alertSubject: input.alert_subject,
-      alertDescription: input.alert_description,
-      priority: input.priority,
-    },
+    where: { targetId_metricId: { targetId, metricId } },
+    create: { targetId, metricId, ...policy },
+    update: policy,
   });
+}
+
+// Back to the template's policy.
+export async function removeOverride(targetId: number, metricId: number) {
+  const result = await prisma.targetMetricOverride.deleteMany({ where: { targetId, metricId } });
+  if (result.count === 0) {
+    throw new HttpError(404, "metric is not customized for this target");
+  }
 }
 
 export async function getEffectiveMetrics(targetId: number) {
@@ -263,7 +260,7 @@ export async function getEffectiveMetrics(targetId: number) {
     const override = overrideByMetricId.get(templateMetric.metricId);
     return {
       metric_key: templateMetric.metric.metricKey,
-      report_interval_sec: override?.reportIntervalSec ?? templateMetric.reportIntervalSec,
+      report_interval_sec: (override ?? templateMetric).reportIntervalSec,
     };
   });
 }

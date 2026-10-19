@@ -24,6 +24,10 @@ export interface TargetMetric {
   criticalThreshold: number | null;
   consecutiveBreaches: number;
   responsibleTeam: string | null;
+  // Team set on the customization only (null: resource's team applies).
+  customTeam: string | null;
+  alertSubject: string;
+  alertDescription: string | null;
   priority: "p1" | "p2" | "p3" | "p4";
 }
 

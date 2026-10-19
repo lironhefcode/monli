@@ -7,6 +7,7 @@ const props = defineProps<{
   availableMetrics?: CatalogMetric[];
   initial?: TemplateMetric;
   saving?: boolean;
+  teamHint?: string;
 }>();
 
 const emit = defineEmits<{
@@ -172,7 +173,7 @@ function submit() {
       <UFormField label="Alert description">
         <UTextarea v-model="form.alert_description" :rows="2" :disabled="monitorOnly" class="w-full" />
       </UFormField>
-      <UFormField label="Responsible team" hint="Used when the resource has no team">
+      <UFormField label="Responsible team" :hint="teamHint ?? 'Used when the resource has no team'">
         <UInput v-model="form.responsible_team" :disabled="monitorOnly" class="w-full max-w-xs" />
       </UFormField>
     </fieldset>

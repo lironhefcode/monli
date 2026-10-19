@@ -9,6 +9,7 @@ import {
   overrideSchema,
   submitReadingSchema,
   targetIdParamsSchema,
+  targetMetricParamsSchema,
   targetTemplateParamsSchema,
   updateTargetSchema,
   type AssignTemplateInput,
@@ -25,6 +26,7 @@ import {
   getTargetDetail,
   getTargetHistory,
   listTargets,
+  removeOverride,
   setOverride,
   submitReading,
   unassignTemplate,
@@ -96,14 +98,24 @@ targetsRouter.delete(
   })
 );
 
-// POST /targets/:id/overrides — set/update a per-metric override
-targetsRouter.post(
-  "/:id/overrides",
-  validate({ params: targetIdParamsSchema, body: overrideSchema }),
+// PUT /targets/:id/overrides/:metricId — customize a metric for this target
+// (full policy; replaces the template's)
+targetsRouter.put(
+  "/:id/overrides/:metricId",
+  validate({ params: targetMetricParamsSchema, body: overrideSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, OverrideInput>, res: Response) => {
-    const targetId = Number(req.params.id);
-    const override = await setOverride(targetId, req.body);
-    res.status(201).json(override);
+    const override = await setOverride(Number(req.params.id), Number(req.params.metricId), req.body);
+    res.json(override);
+  })
+);
+
+// DELETE /targets/:id/overrides/:metricId — return the metric to its template
+targetsRouter.delete(
+  "/:id/overrides/:metricId",
+  validate({ params: targetMetricParamsSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    await removeOverride(Number(req.params.id), Number(req.params.metricId));
+    res.status(204).send();
   })
 );
 

@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import type { HistoryRange, TargetDetail, TargetHistory, TargetUpdateInput, TemplateSummary } from "~/types/targets";
+import type { TemplateMetricInput } from "~/types/monitoring";
+import type {
+  HistoryRange,
+  TargetDetail,
+  TargetHistory,
+  TargetMetric,
+  TargetUpdateInput,
+  TemplateSummary,
+} from "~/types/targets";
 
 const route = useRoute();
 const router = useRouter();
@@ -106,6 +114,41 @@ async function saveDetails(input: TargetUpdateInput) {
   }
 }
 
+// Customize one applied metric for this resource, or return it to its template.
+const editingMetric = ref<TargetMetric | null>(null);
+const metricModalOpen = computed({
+  get: () => editingMetric.value !== null,
+  set: (open: boolean) => {
+    if (!open) editingMetric.value = null;
+  },
+});
+const savingMetric = ref(false);
+
+async function changeMetric(request: () => Promise<unknown>) {
+  savingMetric.value = true;
+  try {
+    await request();
+    editingMetric.value = null;
+    await refresh();
+  } catch (err) {
+    toast.add({ title: "Couldn't save metric", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    savingMetric.value = false;
+  }
+}
+
+function customizeMetric(input: TemplateMetricInput) {
+  const metricId = editingMetric.value?.metric.id;
+  return changeMetric(() =>
+    $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "PUT", body: input })
+  );
+}
+
+function resetMetric() {
+  const metricId = editingMetric.value?.metric.id;
+  return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
+}
+
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
 }
@@ -136,6 +179,20 @@ function formatDate(value: string | null) {
         <h1 class="font-mono text-xl font-semibold text-highlighted">{{ displayName(target) }}</h1>
         <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
       </header>
+
+      <UModal v-model:open="metricModalOpen" title="Edit metric" :ui="{ content: 'sm:max-w-3xl' }">
+        <template #body>
+          <MetricOverrideForm
+            v-if="editingMetric"
+            :key="editingMetric.metric.id"
+            :metric="editingMetric"
+            :saving="savingMetric"
+            @save="customizeMetric"
+            @reset="resetMetric"
+            @cancel="editingMetric = null"
+          />
+        </template>
+      </UModal>
 
       <UModal v-model:open="editOpen" title="Edit resource">
         <template #body>
@@ -245,6 +302,7 @@ function formatDate(value: string | null) {
                   <th scope="col" class="px-4 py-2 font-medium">Priority</th>
                   <th scope="col" class="px-4 py-2 font-medium">Interval</th>
                   <th scope="col" class="px-4 py-2 font-medium">From</th>
+                  <th scope="col" class="px-4 py-2"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -265,7 +323,10 @@ function formatDate(value: string | null) {
                   <td class="px-4 py-2.5 tabular-nums">{{ metric.reportIntervalSec }} s</td>
                   <td class="px-4 py-2.5 text-toned">
                     {{ metric.source.name }}
-                    <span v-if="metric.overridden" class="text-muted">(overridden)</span>
+                    <span v-if="metric.overridden" class="text-muted">(customized)</span>
+                  </td>
+                  <td class="px-4 py-2.5 text-right">
+                    <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
                   </td>
                 </tr>
               </tbody>
