@@ -38,8 +38,9 @@ historical metric charts.
 - **Alert**: created when a metric breach is detected. Snapshots the fully
   resolved policy + response metadata at the moment it fires (frozen copy,
   not live references) so historical alerts don't silently change if
-  templates/targets are edited later. Tracks first-response (ack) separately
-  from resolution, to support MTTA/MTTR-style reporting later.
+  templates/targets are edited later. Tracks acknowledgment (an `acknowledged`
+  flag that can be undone) separately from resolution; every ack, unack and
+  manual resolve is kept as a timed row in `alert_comments`.
 
 ## Policy Resolution (fallback chain, narrowest wins)
 
@@ -284,16 +285,17 @@ silently dropping readings.
 | POST   | `/targets/:id/metrics`                   | **Agent-facing.** Submit a reading; triggers policy resolution + breach evaluation |
 | GET    | `/targets/:id/metrics/:metricId/history` | Time-series data for charting                                                      |
 | GET    | `/alerts`                                | List alerts (filter by status/team/priority)                                       |
-| POST   | `/alerts/:id/first-response`             | Record acknowledgment (who, when, note)                                            |
-| POST   | `/alerts/:id/resolve`                    | Manually resolve an alert                                                          |
+| PATCH  | `/alerts/:id`                            | Ack or unack (`{ acknowledged, comment? }`), recorded as a comment                 |
+| GET    | `/alerts/:id/comments`                   | Ack/unack/resolve history, oldest first                                            |
+| POST   | `/alerts/:id/resolve`                    | Manually resolve an alert (`{ note? }`), recorded as a comment                     |
 
 ## Open Design Notes / Future Extensions
 
 - Tie-break rule when two assigned templates define the same metric with
   different defaults: deterministic (e.g. lowest `template_metrics.id`) —
   acceptable since overrides exist to resolve any case where it matters.
-- MTTA (first response − opened) and MTTR (resolved − opened) are both
-  computable from existing `alerts` columns — worth surfacing on the UI as a
+- MTTA (first `ack` comment − opened) and MTTR (resolved − opened) are both
+  computable from existing columns — worth surfacing on the UI as a
   small ops-metrics dashboard later.
 - Alert subject/description support simple templating (e.g.
   `"High {{metric}} on {{target}}"`), rendered into a static string at

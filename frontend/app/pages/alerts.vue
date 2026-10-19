@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import type { Alert } from "~/types/alerts";
+import type { Alert, AlertAction } from "~/types/alerts";
 
 const POLL_INTERVAL_MS = 15_000;
+
+const route = useRoute();
+const router = useRouter();
 
 const { data, error, refresh } = useFetch<Alert[]>("/api/alerts", {
   query: { status: "open" },
@@ -21,24 +24,77 @@ watch(
   { immediate: true }
 );
 
+// Acked alerts move to their own tab, even if they escalate afterwards.
+const openAlerts = computed(() => alerts.value?.filter((alert) => !alert.acknowledged) ?? null);
+const ackedAlerts = computed(() => alerts.value?.filter((alert) => alert.acknowledged) ?? null);
+
+// The selected tab lives in the URL, so reloads and shared links keep it.
+const tabs = computed(() => [
+  { label: `Open (${openAlerts.value?.length ?? 0})`, value: "open" },
+  { label: `Acknowledged (${ackedAlerts.value?.length ?? 0})`, value: "acknowledged" },
+]);
+const tab = computed({
+  get: () => (route.query.tab === "acknowledged" ? "acknowledged" : "open"),
+  set: (value: string) => router.replace({ query: { ...route.query, tab: value } }),
+});
+const shownAlerts = computed(() => (tab.value === "acknowledged" ? ackedAlerts.value : openAlerts.value));
+
 const updatedAtLabel = computed(() =>
   updatedAt.value?.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 );
 
 const toast = useToast();
-const resolvingId = ref<number | null>(null);
 
-// Manual resolve; the next breaching reading opens a new alert.
-async function resolveAlert(alert: Alert) {
-  resolvingId.value = alert.id;
+const actionText: Record<AlertAction, { title: string; done: string; failed: string }> = {
+  ack: { title: "Acknowledge alert", done: "Alert acknowledged", failed: "Couldn't acknowledge alert" },
+  unack: { title: "Unacknowledge alert", done: "Alert unacknowledged", failed: "Couldn't unacknowledge alert" },
+  resolve: { title: "Resolve alert", done: "Alert resolved", failed: "Couldn't resolve alert" },
+};
+
+// Ack, Unack and Resolve open the note form; pending holds the alert and action.
+const pending = ref<{ alert: Alert; action: AlertAction } | null>(null);
+const saving = ref(false);
+const actionOpen = computed({
+  get: () => pending.value !== null,
+  set: (open: boolean) => {
+    if (!open) pending.value = null;
+  },
+});
+
+function startAction(alert: Alert, action: AlertAction) {
+  pending.value = { alert, action };
+}
+
+// Alert whose comments modal is open.
+const viewing = ref<Alert | null>(null);
+const commentsOpen = computed({
+  get: () => viewing.value !== null,
+  set: (open: boolean) => {
+    if (!open) viewing.value = null;
+  },
+});
+
+// Ack/unack patch the flag; a manual resolve reopens on the next breaching reading.
+async function submitAction(note: string | null) {
+  if (!pending.value) return;
+  const { alert, action } = pending.value;
+  saving.value = true;
   try {
-    await $fetch(`/api/alerts/${alert.id}/resolve`, { method: "POST" });
+    if (action === "resolve") {
+      await $fetch(`/api/alerts/${alert.id}/resolve`, { method: "POST", body: { note } });
+    } else {
+      await $fetch(`/api/alerts/${alert.id}`, {
+        method: "PATCH",
+        body: { acknowledged: action === "ack", comment: note },
+      });
+    }
+    pending.value = null;
     await refresh();
-    toast.add({ title: "Alert resolved", description: alert.subject, color: "success" });
+    toast.add({ title: actionText[action].done, description: alert.subject, color: "success" });
   } catch (err) {
-    toast.add({ title: "Couldn't resolve alert", description: apiErrorMessage(err), color: "error" });
+    toast.add({ title: actionText[action].failed, description: apiErrorMessage(err), color: "error" });
   } finally {
-    resolvingId.value = null;
+    saving.value = false;
   }
 }
 
@@ -58,6 +114,28 @@ usePolling(() => {
       <p class="mt-1 text-muted">Open alerts across all hosts, newest first.</p>
     </header>
 
+    <UModal v-model:open="commentsOpen" title="Comments">
+      <template #body>
+        <AlertComments v-if="viewing" :key="viewing.id" :alert="viewing" />
+      </template>
+    </UModal>
+
+    <UModal v-model:open="actionOpen" :title="pending ? actionText[pending.action].title : ''">
+      <template #body>
+        <AlertActionForm
+          v-if="pending"
+          :key="`${pending.action}-${pending.alert.id}`"
+          :alert="pending.alert"
+          :action="pending.action"
+          :saving="saving"
+          @submit="submitAction"
+          @cancel="pending = null"
+        />
+      </template>
+    </UModal>
+
+    <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
+
     <div class="mt-6 space-y-4">
       <UAlert
         v-if="error && alerts"
@@ -75,11 +153,11 @@ usePolling(() => {
 
       <p v-if="!alerts && !error" class="text-muted">Loading alerts…</p>
 
-      <div v-else-if="alerts && alerts.length === 0" class="rounded-(--ui-radius) border border-default bg-muted px-4 py-6 text-muted">
-        No open alerts.
+      <div v-else-if="shownAlerts && shownAlerts.length === 0" class="rounded-(--ui-radius) border border-default bg-muted px-4 py-6 text-muted">
+        {{ tab === "acknowledged" ? "No acknowledged alerts." : "No open alerts." }}
       </div>
 
-      <div v-else-if="alerts" class="overflow-x-auto rounded-(--ui-radius) border border-default bg-muted">
+      <div v-else-if="shownAlerts" class="overflow-x-auto rounded-(--ui-radius) border border-default bg-muted">
         <table class="w-full text-left">
           <thead class="border-b border-default text-muted">
             <tr>
@@ -96,12 +174,12 @@ usePolling(() => {
           </thead>
           <tbody>
             <AlertRow
-              v-for="alert in alerts"
+              v-for="alert in shownAlerts"
               :key="alert.id"
               :alert="alert"
               :now="now"
-              :resolving="resolvingId === alert.id"
-              @resolve="resolveAlert"
+              @action="startAction"
+              @open="viewing = $event"
             />
           </tbody>
         </table>

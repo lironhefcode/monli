@@ -13,6 +13,20 @@ export interface Alert {
   responsibleTeam: string | null;
   // Resource's displayed name when the alert opened; later renames don't change it.
   hostName: string;
+  // Can be undone; each change is recorded as an AlertComment.
+  acknowledged: boolean;
   target: { id: number; name: string };
   metric: { id: number; metricKey: string; unit: string | null };
+}
+
+export type AlertAction = "ack" | "unack" | "resolve";
+
+// Item from GET /alerts/:id/comments, oldest first.
+export interface AlertComment {
+  id: number;
+  action: AlertAction;
+  body: string | null;
+  // Null until UI sign-in exists.
+  author: string | null;
+  createdAt: string;
 }
