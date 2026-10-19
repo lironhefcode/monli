@@ -2,12 +2,14 @@ import { Router, type Request, type Response } from "express";
 import { validate } from "../middleware/validate";
 import {
   alertIdParamsSchema,
-  firstResponseSchema,
   listAlertsQuerySchema,
-  type FirstResponseInput,
+  resolveAlertSchema,
+  updateAlertSchema,
   type ListAlertsQuery,
+  type ResolveAlertInput,
+  type UpdateAlertInput,
 } from "../schemas/alerts.schema";
-import { listAlerts, recordFirstResponse, resolveAlert } from "../services/alerts.service";
+import { listAlertComments, listAlerts, resolveAlert, updateAlert } from "../services/alerts.service";
 import { asyncHandler } from "../utils/async-handler";
 
 export const alertsRouter = Router();
@@ -22,24 +24,34 @@ alertsRouter.get(
   })
 );
 
-// POST /alerts/:id/first-response — record acknowledgment (who, when, note)
-alertsRouter.post(
-  "/:id/first-response",
-  validate({ params: alertIdParamsSchema, body: firstResponseSchema }),
-  asyncHandler(async (req: Request<Record<string, string>, unknown, FirstResponseInput>, res: Response) => {
+// PATCH /alerts/:id — ack or unack, recorded as a comment
+alertsRouter.patch(
+  "/:id",
+  validate({ params: alertIdParamsSchema, body: updateAlertSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateAlertInput>, res: Response) => {
     const alertId = Number(req.params.id);
-    const alert = await recordFirstResponse(alertId, req.body);
+    const alert = await updateAlert(alertId, req.body);
     res.json(alert);
   })
 );
 
-// POST /alerts/:id/resolve — manually resolve an alert
-alertsRouter.post(
-  "/:id/resolve",
+// GET /alerts/:id/comments — ack, unack and resolve history, oldest first
+alertsRouter.get(
+  "/:id/comments",
   validate({ params: alertIdParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
+    const comments = await listAlertComments(Number(req.params.id));
+    res.json(comments);
+  })
+);
+
+// POST /alerts/:id/resolve — manually resolve an alert, with an optional note
+alertsRouter.post(
+  "/:id/resolve",
+  validate({ params: alertIdParamsSchema, body: resolveAlertSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, ResolveAlertInput>, res: Response) => {
     const alertId = Number(req.params.id);
-    const alert = await resolveAlert(alertId);
+    const alert = await resolveAlert(alertId, req.body);
     res.json(alert);
   })
 );

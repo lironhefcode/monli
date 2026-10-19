@@ -167,31 +167,47 @@ model MetricReading {
 
 // Alerts: snapshot of resolved policy + response metadata at breach time
 model Alert {
-  id                Int       @id @default(autoincrement())
-  targetId          Int       @map("target_id")
-  metricId          Int       @map("metric_id")
-  triggeredValue    Float     @map("triggered_value")
+  id              Int       @id @default(autoincrement())
+  targetId        Int       @map("target_id")
+  metricId        Int       @map("metric_id")
+  triggeredValue  Float     @map("triggered_value")
   // Latest reading while open; severity follows the latest reading's level.
-  lastValue         Float?    @map("last_value")
-  lastValueAt       DateTime? @map("last_value_at")
-  severity          String
-  status            String    @default("open")
-  openedAt          DateTime  @default(now()) @map("opened_at")
-  resolvedAt        DateTime? @map("resolved_at")
-  responsibleTeam   String?   @map("responsible_team")
+  lastValue       Float?    @map("last_value")
+  lastValueAt     DateTime? @map("last_value_at")
+  severity        String
+  status          String    @default("open")
+  openedAt        DateTime  @default(now()) @map("opened_at")
+  resolvedAt      DateTime? @map("resolved_at")
+  responsibleTeam String?   @map("responsible_team")
   // Target's display name (alias or name) when the alert opened.
-  hostName          String    @map("host_name")
-  subject           String
-  description       String?
-  priority          String
-  firstResponseAt   DateTime? @map("first_response_at")
-  firstResponseBy   String?   @map("first_response_by")
-  firstResponseNote String?   @map("first_response_note")
+  hostName        String    @map("host_name")
+  subject         String
+  description     String?
+  priority        String
+  // Can be undone; each change is recorded in comments.
+  acknowledged    Boolean   @default(false)
 
-  target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
-  metric Metric @relation(fields: [metricId], references: [id])
+  target   Target         @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric   Metric         @relation(fields: [metricId], references: [id])
+  comments AlertComment[]
 
   @@index([status], name: "idx_alerts_status")
   @@index([targetId], name: "idx_alerts_target")
   @@map("alerts")
+}
+
+// Timed history of ack, unack and manual resolve on an alert, each with an optional note.
+model AlertComment {
+  id        Int      @id @default(autoincrement())
+  alertId   Int      @map("alert_id")
+  action    String // 'ack' | 'unack' | 'resolve'
+  body      String?
+  // Null until UI sign-in exists.
+  author    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId, createdAt], name: "idx_alert_comments_alert")
+  @@map("alert_comments")
 }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Alert } from "~/types/alerts";
+import type { Alert, AlertAction } from "~/types/alerts";
 
-const props = defineProps<{ alert: Alert; now: number; resolving?: boolean }>();
-const emit = defineEmits<{ resolve: [alert: Alert] }>();
+const props = defineProps<{ alert: Alert; now: number }>();
+const emit = defineEmits<{ action: [alert: Alert, action: AlertAction]; open: [alert: Alert] }>();
 
 const openedAt = computed(() => new Date(props.alert.openedAt));
 
@@ -22,7 +22,12 @@ const valueTitle = computed(() => {
 </script>
 
 <template>
-  <tr class="border-b border-default last:border-b-0" :class="`severity-${alert.severity}`">
+  <!-- Row click opens the comments; the actions cell stops the click so buttons only run their action. -->
+  <tr
+    class="cursor-pointer border-b border-default last:border-b-0 hover:bg-elevated/50"
+    :class="`severity-${alert.severity}`"
+    @click="emit('open', alert)"
+  >
     <td class="rail py-2.5 pl-3 pr-4">
       <span class="severity-label font-medium">{{ alert.severity === "critical" ? "Critical" : "Warning" }}</span>
     </td>
@@ -38,22 +43,16 @@ const valueTitle = computed(() => {
     <td class="whitespace-nowrap px-4 py-2.5 text-muted">
       <time :datetime="alert.openedAt" :title="openedAt.toLocaleString()">{{ openedAgo }}</time>
     </td>
-    <td class="whitespace-nowrap px-4 py-2.5">
+    <td class="whitespace-nowrap px-4 py-2.5" @click.stop>
       <span class="inline-flex gap-1">
-        <UTooltip text="Available once sign-in is added">
-          <!-- Disabled buttons swallow hover events; the span keeps the tooltip working. -->
-          <span tabindex="0">
-            <UButton label="Ack" size="xs" color="neutral" variant="outline" disabled />
-          </span>
-        </UTooltip>
         <UButton
-          label="Resolve"
+          :label="alert.acknowledged ? 'Unack' : 'Ack'"
           size="xs"
           color="neutral"
           variant="outline"
-          :loading="resolving"
-          @click="emit('resolve', alert)"
+          @click="emit('action', alert, alert.acknowledged ? 'unack' : 'ack')"
         />
+        <UButton label="Resolve" size="xs" color="neutral" variant="outline" @click="emit('action', alert, 'resolve')" />
       </span>
     </td>
   </tr>
