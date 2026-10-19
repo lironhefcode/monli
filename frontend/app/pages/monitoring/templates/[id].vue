@@ -107,7 +107,7 @@ const resourcesLabel = computed(() => {
             <h2 id="metrics-title" class="text-base font-semibold text-highlighted">Metrics</h2>
             <p class="text-muted">Changes apply to the {{ resourcesLabel }} using this template.</p>
           </div>
-          <UButton label="Add metric" :disabled="!catalog || availableMetrics.length === 0" @click="openAdd" />
+          <ActionButton label="Add metric" :disabled="!catalog || availableMetrics.length === 0" @click="openAdd" />
         </header>
 
         <p v-if="template.metrics.length === 0" class="px-4 py-3 text-muted">
@@ -147,8 +147,8 @@ const resourcesLabel = computed(() => {
                   <span v-else class="text-muted">Default message</span>
                 </td>
                 <td class="whitespace-nowrap px-4 py-2.5 text-right">
-                  <UButton label="Edit" size="xs" color="neutral" variant="outline" @click="openEdit(metric)" />
-                  <UButton
+                  <ActionButton label="Edit" size="xs" color="neutral" variant="outline" @click="openEdit(metric)" />
+                  <ActionButton
                     label="Remove"
                     size="xs"
                     color="neutral"

@@ -1,8 +1,8 @@
-import { env } from "../config/env";
-import { prisma } from "../db/prisma";
-import type { AgentOs, RegisterAgentInput } from "../schemas/agents.schema";
-import { generateApiKey, hashApiKey } from "../utils/api-key";
-import { HttpError } from "../utils/http-error";
+import { env } from "../config/env.js";
+import { prisma } from "../db/prisma.js";
+import type { AgentOs, RegisterAgentInput } from "../schemas/agents.schema.js";
+import { generateApiKey, hashApiKey } from "../utils/api-key.js";
+import { HttpError } from "../utils/http-error.js";
 
 const ENROLLMENT_TOKEN_TTL_MS = 60 * 60 * 1000;
 

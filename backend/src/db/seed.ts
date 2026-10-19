@@ -1,5 +1,10 @@
 import type { Prisma } from "@prisma/client";
-import { prisma } from "./prisma";
+import { auth } from "../auth/auth.js";
+import { prisma } from "./prisma.js";
+
+// First-run admin, documented in the README. Created only while there are no
+// users at all, so deleting it later doesn't bring it back on restart.
+const defaultAdmin = { name: "Admin", email: "admin@monli.local", password: "monliadmin" };
 
 // Built-in catalog metrics, one per agent collector. Only metrics whose
 // metric_key is missing are inserted, so edited defaults are never overwritten.
@@ -34,6 +39,11 @@ async function main() {
     skipDuplicates: true,
   });
   console.log(`seed: inserted ${count} of ${builtinMetrics.length} built-in metrics`);
+
+  if ((await prisma.user.count()) === 0) {
+    await auth.api.createUser({ body: { ...defaultAdmin, role: "admin" } });
+    console.log(`seed: created the default admin ${defaultAdmin.email}`);
+  }
 }
 
 main()

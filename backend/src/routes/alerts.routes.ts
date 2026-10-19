@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { validate } from "../middleware/validate";
+import { validate } from "../middleware/validate.js";
+import { requirePermission, requireUser } from "../middleware/userAuth.js";
 import {
   alertIdParamsSchema,
   listAlertsQuerySchema,
@@ -8,15 +9,16 @@ import {
   type ListAlertsQuery,
   type ResolveAlertInput,
   type UpdateAlertInput,
-} from "../schemas/alerts.schema";
-import { listAlertComments, listAlerts, resolveAlert, updateAlert } from "../services/alerts.service";
-import { asyncHandler } from "../utils/async-handler";
+} from "../schemas/alerts.schema.js";
+import { listAlertComments, listAlerts, resolveAlert, updateAlert } from "../services/alerts.service.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
 export const alertsRouter = Router();
 
 // GET /alerts — list alerts (filter by status/team/priority)
 alertsRouter.get(
   "/",
+  requireUser,
   validate({ query: listAlertsQuerySchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, unknown, ListAlertsQuery>, res: Response) => {
     const alerts = await listAlerts(req.query);
@@ -27,10 +29,11 @@ alertsRouter.get(
 // PATCH /alerts/:id — ack or unack, recorded as a comment
 alertsRouter.patch(
   "/:id",
+  requirePermission("edit"),
   validate({ params: alertIdParamsSchema, body: updateAlertSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateAlertInput>, res: Response) => {
     const alertId = Number(req.params.id);
-    const alert = await updateAlert(alertId, req.body);
+    const alert = await updateAlert(alertId, req.body, req.user!.name);
     res.json(alert);
   })
 );
@@ -38,6 +41,7 @@ alertsRouter.patch(
 // GET /alerts/:id/comments — ack, unack and resolve history, oldest first
 alertsRouter.get(
   "/:id/comments",
+  requireUser,
   validate({ params: alertIdParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const comments = await listAlertComments(Number(req.params.id));
@@ -48,10 +52,11 @@ alertsRouter.get(
 // POST /alerts/:id/resolve — manually resolve an alert, with an optional note
 alertsRouter.post(
   "/:id/resolve",
+  requirePermission("edit"),
   validate({ params: alertIdParamsSchema, body: resolveAlertSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, ResolveAlertInput>, res: Response) => {
     const alertId = Number(req.params.id);
-    const alert = await resolveAlert(alertId, req.body);
+    const alert = await resolveAlert(alertId, req.body, req.user!.name);
     res.json(alert);
   })
 );

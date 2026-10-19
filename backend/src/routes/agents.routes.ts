@@ -1,22 +1,23 @@
 import path from "node:path";
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { validate } from "../middleware/validate";
+import { validate } from "../middleware/validate.js";
+import { requirePermission } from "../middleware/userAuth.js";
 import {
   createEnrollmentTokenSchema,
   registerAgentSchema,
   type CreateEnrollmentTokenInput,
   type RegisterAgentInput,
-} from "../schemas/agents.schema";
-import { createEnrollmentToken, registerAgent } from "../services/agents.service";
-import { asyncHandler } from "../utils/async-handler";
-import { HttpError } from "../utils/http-error";
+} from "../schemas/agents.schema.js";
+import { createEnrollmentToken, registerAgent } from "../services/agents.service.js";
+import { asyncHandler } from "../utils/async-handler.js";
+import { HttpError } from "../utils/http-error.js";
 
 export const agentsRouter = Router();
 
 // Resolved from src/routes (tsx) or dist/routes (built) to backend/.
-const STATIC_DIR = path.resolve(__dirname, "../../static");
+const STATIC_DIR = path.resolve(import.meta.dirname, "../../static");
 // Filled by the agent build stage in backend/Dockerfile; empty in local dev.
-const AGENT_DIST_DIR = path.resolve(__dirname, "../../agent-dist");
+const AGENT_DIST_DIR = path.resolve(import.meta.dirname, "../../agent-dist");
 
 // Sends a file, turning "not there" into a 404 instead of a 500.
 function sendFileOr404(res: Response, next: NextFunction, file: string, contentType: string, missing: string) {
@@ -53,6 +54,7 @@ function normalizeIp(ip: string): string {
 // agent on a new host.
 agentsRouter.post(
   "/enrollment-tokens",
+  requirePermission("edit"),
   validate({ body: createEnrollmentTokenSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, CreateEnrollmentTokenInput>, res: Response) => {
     const result = await createEnrollmentToken(req.body.os);

@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { agentsRouter } from "./agents.routes";
-import { alertsRouter } from "./alerts.routes";
-import { metricsRouter } from "./metrics.routes";
-import { targetsRouter } from "./targets.routes";
-import { templatesRouter } from "./templates.routes";
+import { agentsRouter } from "./agents.routes.js";
+import { alertsRouter } from "./alerts.routes.js";
+import { metricsRouter } from "./metrics.routes.js";
+import { targetsRouter } from "./targets.routes.js";
+import { templatesRouter } from "./templates.routes.js";
 
 export const router = Router();
 

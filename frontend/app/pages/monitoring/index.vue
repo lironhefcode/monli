@@ -118,7 +118,7 @@ async function saveDefaults(input: MetricDefaultsInput) {
                 <span v-else>—</span>
               </td>
               <td class="px-4 py-2.5 text-right">
-                <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+                <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
               </td>
             </tr>
           </tbody>
@@ -141,7 +141,7 @@ async function saveDefaults(input: MetricDefaultsInput) {
 
     <!-- Templates -->
     <div v-else class="mt-6 space-y-4">
-      <UButton v-if="!creating" label="New template" @click="creating = true" />
+      <ActionButton v-if="!creating" label="New template" @click="creating = true" />
 
       <form
         v-else

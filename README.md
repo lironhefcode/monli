@@ -7,13 +7,13 @@ for the full design (data model, policy resolution, agent design, API).
 
 - `backend/` — Node.js + TypeScript + Express API server (Postgres via Prisma).
 - `frontend/` — Vue 3 + Nuxt UI admin SPA, built into the nginx image.
-- `agent/` — Rust metric-collecting agent (not yet implemented).
+- `agent/` — Rust metric-collecting agent.
 - `nginx/` — serves the frontend and proxies `/api/*` to the API (prefix stripped).
 
 ## Quick start (Docker)
 
 ```
-cp .env.example .env          # set POSTGRES_PASSWORD at minimum
+cp .env.example .env          # set POSTGRES_PASSWORD and BETTER_AUTH_SECRET
 docker compose up -d --build
 curl http://localhost:8080/api/health
 ```
@@ -25,6 +25,28 @@ the API container starts. The UI is at `http://localhost:8080` and the API at
 For a real deployment, set `PUBLIC_API_URL` to the address your monitored
 hosts can reach, including the `/api` prefix — it's embedded in the agent
 install command.
+
+## Signing in
+
+The first start creates an admin account:
+
+- Email: `admin@monli.local`
+- Password: `monliadmin`
+
+Change this password after the first sign-in (user menu → Change password):
+anyone who has read this README knows it. The account is only created while
+there are no users, so deleting it later doesn't bring it back.
+
+Admins create everyone else under Setup → Users and give each user a role:
+
+| Role   | Can                                                      |
+|--------|----------------------------------------------------------|
+| viewer | see every page; no actions                               |
+| editor | everything except managing users                         |
+| admin  | everything, including creating, changing and removing users |
+
+There is no self sign-up. Agents don't use these accounts: they authenticate
+with their own enrollment token and API key.
 
 ## Local development (backend outside Docker)
 

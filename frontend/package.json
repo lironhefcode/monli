@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@nuxt/ui": "^4.11.3",
+    "better-auth": "^1.7.11",
     "nuxt": "^4.6.1",
     "tailwindcss": "^4.3.3",
     "uplot": "^1.6.32",

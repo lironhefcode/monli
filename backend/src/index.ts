@@ -1,6 +1,6 @@
-import { createApp } from "./app";
-import { env } from "./config/env";
-import { startTargetStatusJob } from "./jobs/target-status.job";
+import { createApp } from "./app.js";
+import { env } from "./config/env.js";
+import { startTargetStatusJob } from "./jobs/target-status.job.js";
 
 const app = createApp();
 

@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "../db/prisma";
-import type { CreateMetricInput, UpdateMetricDefaultsInput } from "../schemas/metrics.schema";
-import { assertValidThresholds } from "../utils/alert-levels";
-import { HttpError } from "../utils/http-error";
+import { prisma } from "../db/prisma.js";
+import type { CreateMetricInput, UpdateMetricDefaultsInput } from "../schemas/metrics.schema.js";
+import { assertValidThresholds } from "../utils/alert-levels.js";
+import { HttpError } from "../utils/http-error.js";
 
 export async function createMetric(input: CreateMetricInput) {
   try {
