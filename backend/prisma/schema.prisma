@@ -78,6 +78,8 @@ model Target {
   ipAddress       String?   @map("ip_address")
   os              String?
   arch            String?
+  // e.g. "Ubuntu 22.04 (WSL)", from the agent; os stays the OS family.
+  distro          String?
   description     String?
   responsibleTeam String?   @map("responsible_team")
   status          String    @default("unknown")

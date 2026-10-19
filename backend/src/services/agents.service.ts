@@ -53,6 +53,7 @@ export async function registerAgent(token: string, sourceIp: string, input: Regi
           data: {
             os: input.os,
             arch: input.arch,
+            distro: input.distro,
             apiKeyHash: hashApiKey(apiKey),
             lastSeenAt: now,
             status: "up",
@@ -66,6 +67,7 @@ export async function registerAgent(token: string, sourceIp: string, input: Regi
             ipAddress: sourceIp,
             os: input.os,
             arch: input.arch,
+            distro: input.distro,
             apiKeyHash: hashApiKey(apiKey),
             lastSeenAt: now,
             status: "up",

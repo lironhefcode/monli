@@ -149,6 +149,9 @@ function resetMetric() {
   return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
 }
 
+// "linux, x86_64"; shown after the distro when the agent reports one.
+const osAndArch = computed(() => [target.value?.os, target.value?.arch].filter(Boolean).join(", "));
+
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
 }
@@ -231,7 +234,13 @@ function formatDate(value: string | null) {
             </div>
             <div>
               <dt class="text-muted">Operating system</dt>
-              <dd class="text-highlighted">{{ [target.os, target.arch].filter(Boolean).join(", ") || "—" }}</dd>
+              <dd class="text-highlighted">
+                <template v-if="target.distro">
+                  {{ target.distro }}
+                  <span v-if="osAndArch" class="text-muted">{{ osAndArch }}</span>
+                </template>
+                <template v-else>{{ osAndArch || "—" }}</template>
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Last seen</dt>
