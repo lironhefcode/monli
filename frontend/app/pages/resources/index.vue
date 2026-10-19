@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import type { TargetSummary } from "~/types/targets";
+import { displayName } from "~/utils/targets";
 
 const POLL_INTERVAL_MS = 15_000;
 
-const { data: targets, error, refresh } = useFetch<TargetSummary[]>("/api/targets");
+const {
+  data: targets,
+  error,
+  refresh,
+} = useFetch<TargetSummary[]>("/api/targets");
 
 usePolling(refresh, POLL_INTERVAL_MS);
 </script>
@@ -26,11 +31,21 @@ usePolling(refresh, POLL_INTERVAL_MS);
 
       <p v-else-if="!targets" class="text-muted">Loading resources…</p>
 
-      <div v-else-if="targets.length === 0" class="rounded-(--ui-radius) border border-default bg-muted px-4 py-6 text-muted">
-        No resources yet. <NuxtLink to="/setup" class="text-primary hover:underline">Add an agent</NuxtLink> to start monitoring a host.
+      <div
+        v-else-if="targets.length === 0"
+        class="rounded-(--ui-radius) border border-default bg-muted px-4 py-6 text-muted"
+      >
+        No resources yet.
+        <NuxtLink to="/setup" class="text-primary hover:underline"
+          >Add an agent</NuxtLink
+        >
+        to start monitoring a host.
       </div>
 
-      <div v-else class="overflow-x-auto rounded-(--ui-radius) border border-default bg-muted">
+      <div
+        v-else
+        class="overflow-x-auto rounded-(--ui-radius) border border-default bg-muted"
+      >
         <table class="w-full text-left">
           <thead class="border-b border-default text-muted">
             <tr>
@@ -49,15 +64,26 @@ usePolling(refresh, POLL_INTERVAL_MS);
             >
               <td class="py-2.5 pl-4 pr-4">
                 <!-- The link carries keyboard and screen-reader navigation; the row click is a mouse shortcut. -->
-                <NuxtLink :to="`/resources/${target.id}`" class="font-mono text-highlighted hover:underline" @click.stop>
+                <NuxtLink
+                  :to="`/resources/${target.id}`"
+                  class="font-mono text-highlighted hover:underline"
+                  @click.stop
+                >
                   {{ displayName(target) }}
                 </NuxtLink>
               </td>
-              <td class="px-4 py-2.5 font-mono">{{ target.ipAddress ?? "—" }}</td>
-              <td class="px-4 py-2.5">
-                <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
+              <td class="px-4 py-2.5 font-mono">
+                {{ target.ipAddress ?? "—" }}
               </td>
-              <td class="px-4 py-2.5 text-toned">{{ target.responsibleTeam ?? "—" }}</td>
+              <td class="px-4 py-2.5">
+                <TargetStatus
+                  :status="target.status"
+                  :last-seen-at="target.lastSeenAt"
+                />
+              </td>
+              <td class="px-4 py-2.5 text-toned">
+                {{ target.responsibleTeam ?? "—" }}
+              </td>
             </tr>
           </tbody>
         </table>
