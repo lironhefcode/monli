@@ -22,5 +22,5 @@ const levels = computed(() =>
       <span class="ml-1.5 font-mono tabular-nums">{{ item.rule }}</span>
     </span>
   </span>
-  <span v-else>—</span>
+  <span v-else class="text-muted">Monitor only</span>
 </template>

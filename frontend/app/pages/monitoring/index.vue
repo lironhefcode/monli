@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CatalogMetric } from "~/types/monitoring";
+import type { CatalogMetric, MetricDefaultsInput } from "~/types/monitoring";
 import type { TemplateSummary } from "~/types/targets";
 
 const route = useRoute();
@@ -15,7 +15,7 @@ const tab = computed({
   set: (value: string) => router.replace({ query: { ...route.query, tab: value } }),
 });
 
-const { data: metrics, error: metricsError } = useFetch<CatalogMetric[]>("/api/metrics");
+const { data: metrics, error: metricsError, refresh: refreshMetrics } = useFetch<CatalogMetric[]>("/api/metrics");
 const { data: templates, error: templatesError, refresh: refreshTemplates } =
   useFetch<TemplateSummary[]>("/api/templates");
 
@@ -49,6 +49,30 @@ async function createTemplate() {
     saving.value = false;
   }
 }
+
+// Edit a catalog metric's defaults in a modal.
+const editingMetric = ref<CatalogMetric | null>(null);
+const editOpen = computed({
+  get: () => editingMetric.value !== null,
+  set: (open: boolean) => {
+    if (!open) editingMetric.value = null;
+  },
+});
+const savingDefaults = ref(false);
+
+async function saveDefaults(input: MetricDefaultsInput) {
+  if (!editingMetric.value) return;
+  savingDefaults.value = true;
+  try {
+    await $fetch(`/api/metrics/${editingMetric.value.id}`, { method: "PATCH", body: input });
+    editingMetric.value = null;
+    await refreshMetrics();
+  } catch (err) {
+    toast.add({ title: "Couldn't save defaults", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    savingDefaults.value = false;
+  }
+}
 </script>
 
 <template>
@@ -75,6 +99,7 @@ async function createTemplate() {
               <th scope="col" class="px-4 py-2 font-medium">Unit</th>
               <th scope="col" class="px-4 py-2 font-medium">Description</th>
               <th scope="col" class="px-4 py-2 font-medium">Default levels</th>
+              <th scope="col" class="px-4 py-2"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -92,10 +117,26 @@ async function createTemplate() {
                 />
                 <span v-else>—</span>
               </td>
+              <td class="px-4 py-2.5 text-right">
+                <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      <UModal v-model:open="editOpen" title="Edit metric defaults" :ui="{ content: 'sm:max-w-2xl' }">
+        <template #body>
+          <MetricDefaultsForm
+            v-if="editingMetric"
+            :key="editingMetric.id"
+            :metric="editingMetric"
+            :saving="savingDefaults"
+            @submit="saveDefaults"
+            @cancel="editingMetric = null"
+          />
+        </template>
+      </UModal>
     </div>
 
     <!-- Templates -->

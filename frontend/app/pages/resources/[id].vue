@@ -1,13 +1,60 @@
 <script setup lang="ts">
-import type { TargetDetail, TemplateSummary } from "~/types/targets";
+import type { TemplateMetricInput } from "~/types/monitoring";
+import type {
+  HistoryRange,
+  TargetDetail,
+  TargetHistory,
+  TargetMetric,
+  TargetUpdateInput,
+  TemplateSummary,
+} from "~/types/targets";
 
 const route = useRoute();
+const router = useRouter();
 const targetId = computed(() => Number(route.params.id));
 
 const { data: target, error, refresh } = useFetch<TargetDetail>(() => `/api/targets/${targetId.value}`);
 const { data: allTemplates } = useFetch<TemplateSummary[]>("/api/templates");
 
 const notFound = computed(() => error.value?.statusCode === 404);
+
+// The selected tab and range live in the URL, so reloads and shared links keep them.
+const tabs = [
+  { label: "Details", value: "details" },
+  { label: "Templates & metrics", value: "config" },
+  { label: "Graphs", value: "graphs" },
+];
+const tab = computed({
+  get: () => tabs.find((item) => item.value === route.query.tab)?.value ?? "details",
+  set: (value: string) => router.replace({ query: { ...route.query, tab: value } }),
+});
+
+const ranges: { label: string; value: HistoryRange }[] = [
+  { label: "1h", value: "1h" },
+  { label: "6h", value: "6h" },
+  { label: "24h", value: "24h" },
+  { label: "7d", value: "7d" },
+];
+const range = computed<HistoryRange>({
+  get: () => ranges.find((item) => item.value === route.query.range)?.value ?? "1h",
+  set: (value) => router.replace({ query: { ...route.query, range: value } }),
+});
+
+// History is only fetched while the Graphs tab is open.
+const { data: history, execute: fetchHistory } = useFetch<TargetHistory>(
+  () => `/api/targets/${targetId.value}/history`,
+  { query: { range }, immediate: false, watch: false }
+);
+function loadHistory() {
+  if (tab.value === "graphs") fetchHistory();
+}
+watch([tab, range, targetId], loadHistory, { immediate: true });
+// Agents report about once a minute, so polling faster adds nothing.
+usePolling(loadHistory, 60_000);
+
+const pointsByMetric = computed(
+  () => new Map(history.value?.metrics.map((metric) => [metric.metricId, metric.points]))
+);
 
 const toast = useToast();
 
@@ -51,6 +98,59 @@ async function removeTemplate(templateId: number) {
   }
 }
 
+const editOpen = ref(false);
+const saving = ref(false);
+
+async function saveDetails(input: TargetUpdateInput) {
+  saving.value = true;
+  try {
+    await $fetch(`/api/targets/${targetId.value}`, { method: "PATCH", body: input });
+    editOpen.value = false;
+    await refresh();
+  } catch (err) {
+    toast.add({ title: "Couldn't save changes", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    saving.value = false;
+  }
+}
+
+// Customize one applied metric for this resource, or return it to its template.
+const editingMetric = ref<TargetMetric | null>(null);
+const metricModalOpen = computed({
+  get: () => editingMetric.value !== null,
+  set: (open: boolean) => {
+    if (!open) editingMetric.value = null;
+  },
+});
+const savingMetric = ref(false);
+
+async function changeMetric(request: () => Promise<unknown>) {
+  savingMetric.value = true;
+  try {
+    await request();
+    editingMetric.value = null;
+    await refresh();
+  } catch (err) {
+    toast.add({ title: "Couldn't save metric", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    savingMetric.value = false;
+  }
+}
+
+function customizeMetric(input: TemplateMetricInput) {
+  const metricId = editingMetric.value?.metric.id;
+  return changeMetric(() =>
+    $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "PUT", body: input })
+  );
+}
+
+function resetMetric() {
+  const metricId = editingMetric.value?.metric.id;
+  return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
+}
+
+// "linux, x86_64"; shown after the distro when the agent reports one.
+const osAndArch = computed(() => [target.value?.os, target.value?.arch].filter(Boolean).join(", "));
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -79,14 +179,47 @@ function formatDate(value: string | null) {
 
     <template v-else>
       <header class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-default pb-4">
-        <h1 class="font-mono text-xl font-semibold text-highlighted">{{ target.name }}</h1>
+        <h1 class="font-mono text-xl font-semibold text-highlighted">{{ displayName(target) }}</h1>
         <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
       </header>
 
-      <div class="mt-6 space-y-6">
+      <UModal v-model:open="metricModalOpen" title="Edit metric" :ui="{ content: 'sm:max-w-3xl' }">
+        <template #body>
+          <MetricOverrideForm
+            v-if="editingMetric"
+            :key="editingMetric.metric.id"
+            :metric="editingMetric"
+            :saving="savingMetric"
+            @save="customizeMetric"
+            @reset="resetMetric"
+            @cancel="editingMetric = null"
+          />
+        </template>
+      </UModal>
+
+      <UModal v-model:open="editOpen" title="Edit resource">
+        <template #body>
+          <TargetEditForm :target="target" :saving="saving" @submit="saveDetails" @cancel="editOpen = false" />
+        </template>
+      </UModal>
+
+      <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
+
+      <div v-if="tab === 'details'" class="mt-6">
         <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
-          <h2 id="details-title" class="border-b border-default px-4 py-3 text-base font-semibold text-highlighted">Details</h2>
+          <div class="flex items-center justify-between border-b border-default px-4 py-2">
+            <h2 id="details-title" class="text-base font-semibold text-highlighted">Details</h2>
+            <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editOpen = true" />
+          </div>
           <dl class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <dt class="text-muted">Hostname</dt>
+              <dd class="font-mono text-highlighted">{{ target.name }}</dd>
+            </div>
+            <div>
+              <dt class="text-muted">Alias</dt>
+              <dd class="text-highlighted">{{ target.alias ?? "—" }}</dd>
+            </div>
             <div>
               <dt class="text-muted">IP address</dt>
               <dd class="font-mono text-highlighted">{{ target.ipAddress ?? "—" }}</dd>
@@ -101,7 +234,13 @@ function formatDate(value: string | null) {
             </div>
             <div>
               <dt class="text-muted">Operating system</dt>
-              <dd class="text-highlighted">{{ [target.os, target.arch].filter(Boolean).join(", ") || "—" }}</dd>
+              <dd class="text-highlighted">
+                <template v-if="target.distro">
+                  {{ target.distro }}
+                  <span v-if="osAndArch" class="text-muted">{{ osAndArch }}</span>
+                </template>
+                <template v-else>{{ osAndArch || "—" }}</template>
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Last seen</dt>
@@ -117,7 +256,9 @@ function formatDate(value: string | null) {
             </div>
           </dl>
         </section>
+      </div>
 
+      <div v-else-if="tab === 'config'" class="mt-6 space-y-6">
         <section aria-labelledby="templates-title" class="rounded-(--ui-radius) border border-default bg-muted">
           <header class="border-b border-default px-4 py-3">
             <h2 id="templates-title" class="text-base font-semibold text-highlighted">Templates</h2>
@@ -170,6 +311,7 @@ function formatDate(value: string | null) {
                   <th scope="col" class="px-4 py-2 font-medium">Priority</th>
                   <th scope="col" class="px-4 py-2 font-medium">Interval</th>
                   <th scope="col" class="px-4 py-2 font-medium">From</th>
+                  <th scope="col" class="px-4 py-2"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -190,11 +332,46 @@ function formatDate(value: string | null) {
                   <td class="px-4 py-2.5 tabular-nums">{{ metric.reportIntervalSec }} s</td>
                   <td class="px-4 py-2.5 text-toned">
                     {{ metric.source.name }}
-                    <span v-if="metric.overridden" class="text-muted">(overridden)</span>
+                    <span v-if="metric.overridden" class="text-muted">(customized)</span>
+                  </td>
+                  <td class="px-4 py-2.5 text-right">
+                    <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
                   </td>
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+      </div>
+
+      <div v-else class="mt-6">
+        <section aria-labelledby="graphs-title" class="rounded-(--ui-radius) border border-default bg-muted">
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
+            <div>
+              <h2 id="graphs-title" class="text-base font-semibold text-highlighted">Graphs</h2>
+              <p class="text-muted">Average per interval; the shaded band reaches each interval's peak.</p>
+            </div>
+            <UTabs v-model="range" :items="ranges" :content="false" size="xs" aria-label="Time range" />
+          </header>
+
+          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">Assign a template to see graphs.</p>
+          <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
+
+          <div v-else class="grid gap-px bg-(--ui-border) lg:grid-cols-2">
+            <figure v-for="metric in target.metrics" :key="metric.metric.id" class="bg-muted px-4 py-3 lg:last:odd:col-span-2">
+              <figcaption class="mb-2 font-mono text-highlighted">{{ metric.metric.metricKey }}</figcaption>
+              <MetricChart
+                v-if="pointsByMetric.get(metric.metric.id)?.length"
+                :points="pointsByMetric.get(metric.metric.id)!"
+                :from="history.from"
+                :to="history.to"
+                :bucket-sec="history.bucketSec"
+                :unit="metric.metric.unit"
+                :warning-threshold="metric.warningThreshold"
+                :critical-threshold="metric.criticalThreshold"
+              />
+              <p v-else class="flex h-[180px] items-center justify-center text-muted">No readings in this range.</p>
+            </figure>
           </div>
         </section>
       </div>

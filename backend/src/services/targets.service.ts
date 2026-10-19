@@ -3,8 +3,10 @@ import { prisma } from "../db/prisma";
 import type {
   AssignTemplateInput,
   CreateTargetInput,
+  HistoryRange,
   OverrideInput,
   SubmitReadingInput,
+  UpdateTargetInput,
 } from "../schemas/targets.schema";
 import {
   assertValidThresholds,
@@ -28,38 +30,44 @@ async function resolveTemplateDefault(
 
 // Policy fallback chain, narrowest wins: override → target team (team only) →
 // template default. Shared by alerting and the UI so both see the same values.
+// A customized metric (override) replaces the template's policy as a whole,
+// null thresholds included. Only the team falls through: override, then the
+// target's team, then the template's.
 function resolvePolicy(
   templateDefault: TemplateMetric,
   override: TargetMetricOverride | null | undefined,
   targetResponsibleTeam: string | null
 ) {
+  const policy = override ?? templateDefault;
   return {
-    reportIntervalSec: override?.reportIntervalSec ?? templateDefault.reportIntervalSec,
-    condition: override?.condition ?? templateDefault.condition,
-    warningThreshold: override?.warningThreshold ?? templateDefault.warningThreshold,
-    criticalThreshold: override?.criticalThreshold ?? templateDefault.criticalThreshold,
-    consecutiveBreaches: override?.consecutiveBreaches ?? templateDefault.consecutiveBreaches,
+    reportIntervalSec: policy.reportIntervalSec,
+    condition: policy.condition,
+    warningThreshold: policy.warningThreshold,
+    criticalThreshold: policy.criticalThreshold,
+    consecutiveBreaches: policy.consecutiveBreaches,
     responsibleTeam:
       override?.responsibleTeam ?? targetResponsibleTeam ?? templateDefault.responsibleTeam,
-    alertSubject: override?.alertSubject ?? templateDefault.alertSubject,
-    alertDescription: override?.alertDescription ?? templateDefault.alertDescription,
-    priority: override?.priority ?? templateDefault.priority,
+    alertSubject: policy.alertSubject,
+    alertDescription: policy.alertDescription,
+    priority: policy.priority,
   };
 }
 
-// GET /targets — admin list. Never exposes the API key hash.
-export function listTargets() {
-  return prisma.target.findMany({
+// GET /targets — admin list, sorted by displayed name (alias, else name).
+// Never exposes the API key hash.
+export async function listTargets() {
+  const targets = await prisma.target.findMany({
     select: {
       id: true,
       name: true,
+      alias: true,
       ipAddress: true,
       status: true,
       responsibleTeam: true,
       lastSeenAt: true,
     },
-    orderBy: { name: "asc" },
   });
+  return targets.sort((a, b) => (a.alias ?? a.name).localeCompare(b.alias ?? b.name));
 }
 
 // GET /targets/:id — admin detail: metadata, assigned templates, and the
@@ -110,6 +118,8 @@ export async function getTargetDetail(targetId: number) {
         metric: templateMetric.metric,
         source: templateMetric.template,
         overridden: override !== undefined,
+        // The customized team itself; responsibleTeam below is the resolved one.
+        customTeam: override?.responsibleTeam ?? null,
         ...resolvePolicy(templateMetric, override, target.responsibleTeam),
       };
     }),
@@ -129,6 +139,21 @@ export async function createTarget(input: CreateTargetInput) {
     omit: { apiKeyHash: true },
   });
   return { target, apiKey };
+}
+
+// Open alerts keep the team and name they opened with; only alerts opened
+// after this use the new values.
+export async function updateTarget(targetId: number, input: UpdateTargetInput) {
+  const target = await prisma.target.findUnique({ where: { id: targetId } });
+  if (!target) {
+    throw new HttpError(404, "target not found");
+  }
+
+  return prisma.target.update({
+    where: { id: targetId },
+    data: { alias: input.alias, responsibleTeam: input.responsible_team },
+    omit: { apiKeyHash: true },
+  });
 }
 
 export async function assignTemplate(targetId: number, input: AssignTemplateInput) {
@@ -163,13 +188,15 @@ export async function unassignTemplate(targetId: number, templateId: number) {
   }
 }
 
-export async function setOverride(targetId: number, input: OverrideInput) {
+// Customize a metric for one target: the stored policy replaces the template's
+// as a whole, so later template edits don't reach it.
+export async function setOverride(targetId: number, metricId: number, input: OverrideInput) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
     throw new HttpError(404, "target not found");
   }
 
-  const templateDefault = await resolveTemplateDefault(targetId, input.metric_id);
+  const templateDefault = await resolveTemplateDefault(targetId, metricId);
   if (!templateDefault) {
     throw new HttpError(
       422,
@@ -177,43 +204,32 @@ export async function setOverride(targetId: number, input: OverrideInput) {
     );
   }
 
-  const existing = await prisma.targetMetricOverride.findUnique({
-    where: { targetId_metricId: { targetId, metricId: input.metric_id } },
-  });
-  // Validate the thresholds alerting would actually use after this change.
-  assertValidThresholds(
-    input.condition ?? existing?.condition ?? templateDefault.condition,
-    input.warning_threshold ?? existing?.warningThreshold ?? templateDefault.warningThreshold,
-    input.critical_threshold ?? existing?.criticalThreshold ?? templateDefault.criticalThreshold
-  );
+  assertValidThresholds(input.condition, input.warning_threshold, input.critical_threshold);
 
+  const policy = {
+    reportIntervalSec: input.report_interval_sec,
+    condition: input.condition,
+    warningThreshold: input.warning_threshold,
+    criticalThreshold: input.critical_threshold,
+    consecutiveBreaches: input.consecutive_breaches,
+    responsibleTeam: input.responsible_team,
+    alertSubject: input.alert_subject,
+    alertDescription: input.alert_description,
+    priority: input.priority,
+  };
   return prisma.targetMetricOverride.upsert({
-    where: { targetId_metricId: { targetId, metricId: input.metric_id } },
-    create: {
-      targetId,
-      metricId: input.metric_id,
-      reportIntervalSec: input.report_interval_sec,
-      condition: input.condition,
-      warningThreshold: input.warning_threshold,
-      criticalThreshold: input.critical_threshold,
-      consecutiveBreaches: input.consecutive_breaches,
-      responsibleTeam: input.responsible_team,
-      alertSubject: input.alert_subject,
-      alertDescription: input.alert_description,
-      priority: input.priority,
-    },
-    update: {
-      reportIntervalSec: input.report_interval_sec,
-      condition: input.condition,
-      warningThreshold: input.warning_threshold,
-      criticalThreshold: input.critical_threshold,
-      consecutiveBreaches: input.consecutive_breaches,
-      responsibleTeam: input.responsible_team,
-      alertSubject: input.alert_subject,
-      alertDescription: input.alert_description,
-      priority: input.priority,
-    },
+    where: { targetId_metricId: { targetId, metricId } },
+    create: { targetId, metricId, ...policy },
+    update: policy,
   });
+}
+
+// Back to the template's policy.
+export async function removeOverride(targetId: number, metricId: number) {
+  const result = await prisma.targetMetricOverride.deleteMany({ where: { targetId, metricId } });
+  if (result.count === 0) {
+    throw new HttpError(404, "metric is not customized for this target");
+  }
 }
 
 export async function getEffectiveMetrics(targetId: number) {
@@ -244,7 +260,7 @@ export async function getEffectiveMetrics(targetId: number) {
     const override = overrideByMetricId.get(templateMetric.metricId);
     return {
       metric_key: templateMetric.metric.metricKey,
-      report_interval_sec: override?.reportIntervalSec ?? templateMetric.reportIntervalSec,
+      report_interval_sec: (override ?? templateMetric).reportIntervalSec,
     };
   });
 }
@@ -292,10 +308,13 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     where: { targetId, metricId: metric.id, status: "open" },
   });
 
+  // An open alert keeps the name it opened with, even if the alias changed since.
+  const hostName = openAlert?.hostName ?? target.alias ?? target.name;
+
   const message = (current: Level) => {
     const context = {
       metric: metric.metricKey,
-      host: target.name,
+      host: hostName,
       value: input.value,
       unit: metric.unit,
       severity: current,
@@ -341,6 +360,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
           lastValueAt: recordedAt,
           severity: level,
           responsibleTeam: policy.responsibleTeam,
+          hostName,
           priority: policy.priority,
           ...message(level),
         },
@@ -351,22 +371,54 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
   return reading;
 }
 
-export async function getMetricHistory(targetId: number, metricId: number, limit: number) {
+// Window length and bucket size per range, in seconds. Buckets keep every
+// range at a few hundred points (60-336) however long it is.
+const historyWindows: Record<HistoryRange, { span: number; bucket: number }> = {
+  "1h": { span: 3600, bucket: 60 },
+  "6h": { span: 6 * 3600, bucket: 120 },
+  "24h": { span: 24 * 3600, bucket: 300 },
+  "7d": { span: 7 * 24 * 3600, bucket: 1800 },
+};
+
+export interface HistoryPoint {
+  t: string;
+  avg: number;
+  max: number;
+}
+
+// Readings of every metric on the target within the range, averaged per time
+// bucket. max keeps short spikes visible that the average flattens.
+export async function getTargetHistory(targetId: number, range: HistoryRange) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
     throw new HttpError(404, "target not found");
   }
 
-  const metric = await prisma.metric.findUnique({ where: { id: metricId } });
-  if (!metric) {
-    throw new HttpError(404, "metric not found");
+  const { span, bucket } = historyWindows[range];
+  const rows = await prisma.$queryRaw<{ metric_id: number; t: Date; avg: number; max: number }[]>`
+    SELECT
+      metric_id,
+      to_timestamp(floor(extract(epoch FROM recorded_at) / ${bucket}) * ${bucket}) AS t,
+      avg(value) AS avg,
+      max(value) AS max
+    FROM metric_readings
+    WHERE target_id = ${targetId}
+      AND recorded_at >= now() - make_interval(secs => ${span})
+    GROUP BY metric_id, t
+    ORDER BY metric_id, t
+  `;
+
+  const byMetric = new Map<number, HistoryPoint[]>();
+  for (const row of rows) {
+    const points = byMetric.get(row.metric_id) ?? [];
+    points.push({ t: row.t.toISOString(), avg: Number(row.avg), max: Number(row.max) });
+    byMetric.set(row.metric_id, points);
   }
-
-  const readings = await prisma.metricReading.findMany({
-    where: { targetId, metricId },
-    orderBy: { recordedAt: "desc" },
-    take: limit,
-  });
-
-  return readings.map((reading) => ({ ...reading, id: reading.id.toString() }));
+  return {
+    range,
+    bucketSec: bucket,
+    from: new Date(Date.now() - span * 1000).toISOString(),
+    to: new Date().toISOString(),
+    metrics: [...byMetric].map(([metricId, points]) => ({ metricId, points })),
+  };
 }

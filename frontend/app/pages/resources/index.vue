@@ -50,7 +50,7 @@ usePolling(refresh, POLL_INTERVAL_MS);
               <td class="py-2.5 pl-4 pr-4">
                 <!-- The link carries keyboard and screen-reader navigation; the row click is a mouse shortcut. -->
                 <NuxtLink :to="`/resources/${target.id}`" class="font-mono text-highlighted hover:underline" @click.stop>
-                  {{ target.name }}
+                  {{ displayName(target) }}
                 </NuxtLink>
               </td>
               <td class="px-4 py-2.5 font-mono">{{ target.ipAddress ?? "—" }}</td>

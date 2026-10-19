@@ -3,7 +3,10 @@ export type TargetStatus = "up" | "down" | "unknown";
 // Item from GET /targets.
 export interface TargetSummary {
   id: number;
+  // Hostname reported by the agent.
   name: string;
+  // Shown instead of name when set (see displayName).
+  alias: string | null;
   ipAddress: string | null;
   status: TargetStatus;
   responsibleTeam: string | null;
@@ -21,6 +24,10 @@ export interface TargetMetric {
   criticalThreshold: number | null;
   consecutiveBreaches: number;
   responsibleTeam: string | null;
+  // Team set on the customization only (null: resource's team applies).
+  customTeam: string | null;
+  alertSubject: string;
+  alertDescription: string | null;
   priority: "p1" | "p2" | "p3" | "p4";
 }
 
@@ -29,10 +36,18 @@ export interface TargetDetail extends TargetSummary {
   type: string;
   os: string | null;
   arch: string | null;
+  // e.g. "Ubuntu 22.04 (WSL)"; null until an agent that reports it enrolls.
+  distro: string | null;
   description: string | null;
   createdAt: string;
   templates: { id: number; name: string }[];
   metrics: TargetMetric[];
+}
+
+// Body for PATCH /targets/:id; null clears a field.
+export interface TargetUpdateInput {
+  alias: string | null;
+  responsible_team: string | null;
 }
 
 // Item from GET /templates.
@@ -40,4 +55,22 @@ export interface TemplateSummary {
   id: number;
   name: string;
   description: string | null;
+}
+
+export type HistoryRange = "1h" | "6h" | "24h" | "7d";
+
+// One time bucket: average and peak of the readings in it.
+export interface HistoryPoint {
+  t: string;
+  avg: number;
+  max: number;
+}
+
+// GET /targets/:id/history?range=…
+export interface TargetHistory {
+  range: HistoryRange;
+  bucketSec: number;
+  from: string;
+  to: string;
+  metrics: { metricId: number; points: HistoryPoint[] }[];
 }

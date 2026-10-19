@@ -20,6 +20,7 @@ model Metric {
   defaultCriticalThreshold Float?  @map("default_critical_threshold")
   defaultPriority          String? @map("default_priority")
   defaultReportIntervalSec Int?    @map("default_report_interval_sec")
+  defaultAlertSubject      String? @map("default_alert_subject")
 
   templateMetrics TemplateMetric[]
   overrides       TargetMetricOverride[]
@@ -48,7 +49,8 @@ model TemplateMetric {
   templateId          Int     @map("template_id")
   metricId            Int     @map("metric_id")
   reportIntervalSec   Int     @default(60) @map("report_interval_sec")
-  // One condition, two levels; at least one threshold is set (app layer).
+  // One condition, two levels; a null threshold turns that level off (both
+  // null: monitor only, no alerts).
   condition           String
   warningThreshold    Float?  @map("warning_threshold")
   criticalThreshold   Float?  @map("critical_threshold")
@@ -68,11 +70,16 @@ model TemplateMetric {
 // Targets: monitored hosts/services
 model Target {
   id              Int       @id @default(autoincrement())
+  // Hostname reported by the agent; enrollment matches on it, so it never changes.
   name            String
+  // Optional display name shown instead of name.
+  alias           String?
   type            String
   ipAddress       String?   @map("ip_address")
   os              String?
   arch            String?
+  // e.g. "Ubuntu 22.04 (WSL)", from the agent; os stays the OS family.
+  distro          String?
   description     String?
   responsibleTeam String?   @map("responsible_team")
   status          String    @default("unknown")
@@ -117,22 +124,24 @@ model TargetTemplate {
   @@map("target_templates")
 }
 
-// Per-(target, metric) override, template-agnostic.
+// Per-(target, metric) customization, template-agnostic: a full copy of the
+// policy that replaces the template's (template edits don't reach it). Null
+// thresholds turn that level off; a null team falls back to the target's team.
 // App-layer rule: metric_id must already be reachable via one of the
 // target's assigned templates before an override can be created.
 model TargetMetricOverride {
   id                  Int     @id @default(autoincrement())
   targetId            Int     @map("target_id")
   metricId            Int     @map("metric_id")
-  reportIntervalSec   Int?    @map("report_interval_sec")
-  condition           String?
+  reportIntervalSec   Int     @map("report_interval_sec")
+  condition           String
   warningThreshold    Float?  @map("warning_threshold")
   criticalThreshold   Float?  @map("critical_threshold")
-  consecutiveBreaches Int?    @map("consecutive_breaches")
+  consecutiveBreaches Int     @map("consecutive_breaches")
   responsibleTeam     String? @map("responsible_team")
-  alertSubject        String? @map("alert_subject")
+  alertSubject        String  @default("") @map("alert_subject")
   alertDescription    String? @map("alert_description")
-  priority            String?
+  priority            String
 
   target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
   metric Metric @relation(fields: [metricId], references: [id], onDelete: Cascade)
@@ -170,6 +179,8 @@ model Alert {
   openedAt          DateTime  @default(now()) @map("opened_at")
   resolvedAt        DateTime? @map("resolved_at")
   responsibleTeam   String?   @map("responsible_team")
+  // Target's display name (alias or name) when the alert opened.
+  hostName          String    @map("host_name")
   subject           String
   description       String?
   priority          String

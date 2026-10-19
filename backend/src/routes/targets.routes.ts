@@ -11,21 +11,26 @@ import {
   targetIdParamsSchema,
   targetMetricParamsSchema,
   targetTemplateParamsSchema,
+  updateTargetSchema,
   type AssignTemplateInput,
   type CreateTargetInput,
+  type HistoryQuery,
   type OverrideInput,
   type SubmitReadingInput,
+  type UpdateTargetInput,
 } from "../schemas/targets.schema";
 import {
   assignTemplate,
   createTarget,
   getEffectiveMetrics,
   getTargetDetail,
-  getMetricHistory,
+  getTargetHistory,
   listTargets,
+  removeOverride,
   setOverride,
   submitReading,
   unassignTemplate,
+  updateTarget,
 } from "../services/targets.service";
 import { asyncHandler } from "../utils/async-handler";
 
@@ -45,6 +50,15 @@ targetsRouter.get(
   validate({ params: targetIdParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     res.json(await getTargetDetail(Number(req.params.id)));
+  })
+);
+
+// PATCH /targets/:id — admin-facing: set or clear alias and responsible team
+targetsRouter.patch(
+  "/:id",
+  validate({ params: targetIdParamsSchema, body: updateTargetSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateTargetInput>, res: Response) => {
+    res.json(await updateTarget(Number(req.params.id), req.body));
   })
 );
 
@@ -84,14 +98,24 @@ targetsRouter.delete(
   })
 );
 
-// POST /targets/:id/overrides — set/update a per-metric override
-targetsRouter.post(
-  "/:id/overrides",
-  validate({ params: targetIdParamsSchema, body: overrideSchema }),
+// PUT /targets/:id/overrides/:metricId — customize a metric for this target
+// (full policy; replaces the template's)
+targetsRouter.put(
+  "/:id/overrides/:metricId",
+  validate({ params: targetMetricParamsSchema, body: overrideSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, OverrideInput>, res: Response) => {
-    const targetId = Number(req.params.id);
-    const override = await setOverride(targetId, req.body);
-    res.status(201).json(override);
+    const override = await setOverride(Number(req.params.id), Number(req.params.metricId), req.body);
+    res.json(override);
+  })
+);
+
+// DELETE /targets/:id/overrides/:metricId — return the metric to its template
+targetsRouter.delete(
+  "/:id/overrides/:metricId",
+  validate({ params: targetMetricParamsSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    await removeOverride(Number(req.params.id), Number(req.params.metricId));
+    res.status(204).send();
   })
 );
 
@@ -119,15 +143,15 @@ targetsRouter.post(
   })
 );
 
-// GET /targets/:id/metrics/:metricId/history — time-series data for charting
+// GET /targets/:id/history?range=1h|6h|24h|7d — bucketed time series of every
+// metric on the target, for charting
 targetsRouter.get(
-  "/:id/metrics/:metricId/history",
-  validate({ params: targetMetricParamsSchema, query: historyQuerySchema }),
+  "/:id/history",
+  validate({ params: targetIdParamsSchema, query: historyQuerySchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const targetId = Number(req.params.id);
-    const metricId = Number(req.params.metricId);
-    const limit = Number(req.query.limit);
-    const history = await getMetricHistory(targetId, metricId, limit);
+    const { range } = req.query as unknown as HistoryQuery;
+    const history = await getTargetHistory(targetId, range);
     res.json(history);
   })
 );

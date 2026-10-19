@@ -32,16 +32,14 @@ export function levelOf(
   return null;
 }
 
-// At least one level, and warning must trip before critical (lower for > / ≥,
-// higher for < / ≤) so critical stays reachable.
+// Both levels empty is allowed (monitor only: no alerts). With both set,
+// warning must trip before critical (lower for > / ≥, higher for < / ≤) so
+// critical stays reachable.
 export function assertValidThresholds(
   condition: string,
   warningThreshold: number | null,
   criticalThreshold: number | null
 ) {
-  if (warningThreshold === null && criticalThreshold === null) {
-    throw new HttpError(422, "set a warning threshold, a critical threshold, or both");
-  }
   if (warningThreshold === null || criticalThreshold === null) return;
   if ((condition === "gt" || condition === "gte") && warningThreshold >= criticalThreshold) {
     throw new HttpError(422, "warning threshold must be lower than critical threshold");
