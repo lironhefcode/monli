@@ -11,11 +11,20 @@ const route = useRoute();
 function isCurrent(to: string) {
   return route.path === to || route.path.startsWith(`${to}/`);
 }
+
+const { user, signOut } = useAuth();
+const toast = useToast();
+const passwordOpen = ref(false);
+
+function passwordChanged() {
+  passwordOpen.value = false;
+  toast.add({ title: "Password changed", color: "success" });
+}
 </script>
 
 <template>
   <div class="min-h-screen lg:flex">
-    <aside class="border-b border-default bg-muted lg:sticky lg:top-0 lg:h-screen lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
+    <aside class="flex flex-col border-b border-default bg-muted lg:sticky lg:top-0 lg:h-screen lg:w-56 lg:shrink-0 lg:border-b-0 lg:border-r">
       <div class="flex items-center gap-6 px-4 lg:block lg:px-0">
         <NuxtLink to="/" class="block py-3 text-lg font-semibold text-highlighted lg:px-5 lg:py-5">Monli</NuxtLink>
 
@@ -33,7 +42,24 @@ function isCurrent(to: string) {
           </ul>
         </nav>
       </div>
+
+      <div v-if="user" class="flex items-center justify-between gap-3 border-t border-default px-4 py-3 lg:mt-auto lg:block lg:px-5 lg:py-4">
+        <div class="min-w-0">
+          <p class="truncate text-highlighted" :title="user.email">{{ user.name }}</p>
+          <p class="truncate text-xs text-muted">{{ user.email }} · <span class="capitalize">{{ user.role }}</span></p>
+        </div>
+        <div class="flex gap-1 lg:-ml-2 lg:mt-2">
+          <UButton label="Change password" size="xs" color="neutral" variant="ghost" @click="passwordOpen = true" />
+          <UButton label="Sign out" size="xs" color="neutral" variant="ghost" @click="signOut" />
+        </div>
+      </div>
     </aside>
+
+    <UModal v-model:open="passwordOpen" title="Change password">
+      <template #body>
+        <ChangePasswordForm @done="passwordChanged" @cancel="passwordOpen = false" />
+      </template>
+    </UModal>
 
     <main class="min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-8">
       <slot />

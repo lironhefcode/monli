@@ -26,7 +26,10 @@ const actionLabels: Record<AlertAction, string> = {
     <ol v-else class="divide-y divide-default rounded-(--ui-radius) border border-default">
       <li v-for="comment in comments" :key="comment.id" class="px-3 py-2">
         <div class="flex items-baseline justify-between gap-4">
-          <span class="font-medium text-highlighted">{{ actionLabels[comment.action] }}</span>
+          <span>
+            <span class="font-medium text-highlighted">{{ actionLabels[comment.action] }}</span>
+            <span v-if="comment.author" class="text-muted"> by {{ comment.author }}</span>
+          </span>
           <time :datetime="comment.createdAt" class="text-muted">{{ new Date(comment.createdAt).toLocaleString() }}</time>
         </div>
         <p v-if="comment.body" class="mt-1 whitespace-pre-line text-toned">{{ comment.body }}</p>

@@ -8,10 +8,12 @@ import type {
   TargetUpdateInput,
   TemplateSummary,
 } from "~/types/targets";
+import { displayName } from "~/utils/targets";
 
 const route = useRoute();
 const router = useRouter();
 const targetId = computed(() => Number(route.params.id));
+const { canEdit } = useAuth();
 
 const { data: target, error, refresh } = useFetch<TargetDetail>(() => `/api/targets/${targetId.value}`);
 const { data: allTemplates } = useFetch<TemplateSummary[]>("/api/templates");
@@ -209,7 +211,7 @@ function formatDate(value: string | null) {
         <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
           <div class="flex items-center justify-between border-b border-default px-4 py-2">
             <h2 id="details-title" class="text-base font-semibold text-highlighted">Details</h2>
-            <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editOpen = true" />
+            <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editOpen = true" />
           </div>
           <dl class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -268,7 +270,7 @@ function formatDate(value: string | null) {
           <ul v-if="target.templates.length" class="divide-y divide-default">
             <li v-for="template in target.templates" :key="template.id" class="flex items-center justify-between gap-3 px-4 py-2">
               <span class="text-highlighted">{{ template.name }}</span>
-              <UButton
+              <ActionButton
                 label="Remove"
                 size="xs"
                 color="neutral"
@@ -287,9 +289,9 @@ function formatDate(value: string | null) {
               placeholder="Choose a template"
               aria-label="Template to add"
               class="w-64"
-              :disabled="templateOptions.length === 0"
+              :disabled="!canEdit || templateOptions.length === 0"
             />
-            <UButton label="Add template" :loading="busy" :disabled="selectedTemplateId === undefined" @click="addTemplate" />
+            <ActionButton label="Add template" :loading="busy" :disabled="selectedTemplateId === undefined" @click="addTemplate" />
             <span v-if="allTemplates && templateOptions.length === 0" class="text-dimmed">All templates are assigned.</span>
           </div>
         </section>
@@ -335,7 +337,7 @@ function formatDate(value: string | null) {
                     <span v-if="metric.overridden" class="text-muted">(customized)</span>
                   </td>
                   <td class="px-4 py-2.5 text-right">
-                    <UButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+                    <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
                   </td>
                 </tr>
               </tbody>

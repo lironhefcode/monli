@@ -100,7 +100,7 @@ async function copy() {
     </header>
 
     <div v-if="!open" class="px-4 py-4">
-      <UButton label="Add agent" @click="start" />
+      <ActionButton label="Add agent" @click="start" />
     </div>
 
     <div v-else class="space-y-4 px-4 py-4">

@@ -1,12 +1,12 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "../db/prisma";
+import { prisma } from "../db/prisma.js";
 import type {
   AddTemplateMetricInput,
   CreateTemplateInput,
   UpdateTemplateMetricInput,
-} from "../schemas/templates.schema";
-import { assertValidThresholds } from "../utils/alert-levels";
-import { HttpError } from "../utils/http-error";
+} from "../schemas/templates.schema.js";
+import { assertValidThresholds } from "../utils/alert-levels.js";
+import { HttpError } from "../utils/http-error.js";
 
 export function listTemplates() {
   return prisma.template.findMany({

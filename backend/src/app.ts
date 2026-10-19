@@ -1,9 +1,11 @@
 import cors from "cors";
 import express from "express";
 import morgan from "morgan";
-import { env } from "./config/env";
-import { errorHandler } from "./middleware/errorHandler";
-import { router } from "./routes";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./auth/auth.js";
+import { env } from "./config/env.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { router } from "./routes/index.js";
 
 export function createApp() {
   const app = express();
@@ -15,8 +17,13 @@ export function createApp() {
   }
 
   app.use(cors());
-  app.use(express.json());
   app.use(morgan("dev"));
+
+  // Sign-in, sessions and user management (/api/user/* through nginx).
+  // Must come before express.json(): Better Auth reads the raw body itself.
+  app.all("/user/*", toNodeHandler(auth));
+
+  app.use(express.json());
 
   app.get("/health", (req, res) => {
     res.json({ status: "ok" });

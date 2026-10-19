@@ -45,14 +45,14 @@ const valueTitle = computed(() => {
     </td>
     <td class="whitespace-nowrap px-4 py-2.5" @click.stop>
       <span class="inline-flex gap-1">
-        <UButton
+        <ActionButton
           :label="alert.acknowledged ? 'Unack' : 'Ack'"
           size="xs"
           color="neutral"
           variant="outline"
           @click="emit('action', alert, alert.acknowledged ? 'unack' : 'ack')"
         />
-        <UButton label="Resolve" size="xs" color="neutral" variant="outline" @click="emit('action', alert, 'resolve')" />
+        <ActionButton label="Resolve" size="xs" color="neutral" variant="outline" @click="emit('action', alert, 'resolve')" />
       </span>
     </td>
   </tr>

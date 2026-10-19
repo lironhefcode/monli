@@ -1,4 +1,4 @@
-import { HttpError } from "./http-error";
+import { HttpError } from "./http-error.js";
 
 export type Condition = "gt" | "gte" | "lt" | "lte" | "eq";
 export type Level = "warning" | "critical";

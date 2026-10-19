@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
-import { env } from "../config/env";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
-import { validate } from "../middleware/validate";
+import { env } from "../config/env.js";
+import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
+import { validate } from "../middleware/validate.js";
+import { requirePermission, requireUser } from "../middleware/userAuth.js";
 import {
   assignTemplateSchema,
   createTargetSchema,
@@ -18,7 +19,7 @@ import {
   type OverrideInput,
   type SubmitReadingInput,
   type UpdateTargetInput,
-} from "../schemas/targets.schema";
+} from "../schemas/targets.schema.js";
 import {
   assignTemplate,
   createTarget,
@@ -31,14 +32,15 @@ import {
   submitReading,
   unassignTemplate,
   updateTarget,
-} from "../services/targets.service";
-import { asyncHandler } from "../utils/async-handler";
+} from "../services/targets.service.js";
+import { asyncHandler } from "../utils/async-handler.js";
 
 export const targetsRouter = Router();
 
 // GET /targets — admin-facing: list targets for the UI
 targetsRouter.get(
   "/",
+  requireUser,
   asyncHandler(async (_req: Request, res: Response) => {
     res.json(await listTargets());
   })
@@ -47,6 +49,7 @@ targetsRouter.get(
 // GET /targets/:id — admin-facing: metadata, templates, resolved metric policies
 targetsRouter.get(
   "/:id",
+  requireUser,
   validate({ params: targetIdParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     res.json(await getTargetDetail(Number(req.params.id)));
@@ -56,6 +59,7 @@ targetsRouter.get(
 // PATCH /targets/:id — admin-facing: set or clear alias and responsible team
 targetsRouter.patch(
   "/:id",
+  requirePermission("edit"),
   validate({ params: targetIdParamsSchema, body: updateTargetSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateTargetInput>, res: Response) => {
     res.json(await updateTarget(Number(req.params.id), req.body));
@@ -68,6 +72,7 @@ targetsRouter.patch(
 // (only its hash is stored).
 targetsRouter.post(
   "/",
+  requirePermission("edit"),
   validate({ body: createTargetSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, CreateTargetInput>, res: Response) => {
     const { target, apiKey } = await createTarget(req.body);
@@ -78,6 +83,7 @@ targetsRouter.post(
 // POST /targets/:id/templates — assign a template to a target
 targetsRouter.post(
   "/:id/templates",
+  requirePermission("edit"),
   validate({ params: targetIdParamsSchema, body: assignTemplateSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, AssignTemplateInput>, res: Response) => {
     const targetId = Number(req.params.id);
@@ -89,6 +95,7 @@ targetsRouter.post(
 // DELETE /targets/:id/templates/:templateId — unassign a template
 targetsRouter.delete(
   "/:id/templates/:templateId",
+  requirePermission("edit"),
   validate({ params: targetTemplateParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const targetId = Number(req.params.id);
@@ -102,6 +109,7 @@ targetsRouter.delete(
 // (full policy; replaces the template's)
 targetsRouter.put(
   "/:id/overrides/:metricId",
+  requirePermission("edit"),
   validate({ params: targetMetricParamsSchema, body: overrideSchema }),
   asyncHandler(async (req: Request<Record<string, string>, unknown, OverrideInput>, res: Response) => {
     const override = await setOverride(Number(req.params.id), Number(req.params.metricId), req.body);
@@ -112,6 +120,7 @@ targetsRouter.put(
 // DELETE /targets/:id/overrides/:metricId — return the metric to its template
 targetsRouter.delete(
   "/:id/overrides/:metricId",
+  requirePermission("edit"),
   validate({ params: targetMetricParamsSchema }),
   asyncHandler(async (req: Request, res: Response) => {
     await removeOverride(Number(req.params.id), Number(req.params.metricId));
@@ -147,6 +156,7 @@ targetsRouter.post(
 // metric on the target, for charting
 targetsRouter.get(
   "/:id/history",
+  requireUser,
   validate({ params: targetIdParamsSchema, query: historyQuerySchema }),
   asyncHandler(async (req: Request, res: Response) => {
     const targetId = Number(req.params.id);

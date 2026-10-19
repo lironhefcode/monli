@@ -1,10 +1,10 @@
-import { prisma } from "../db/prisma";
+import { prisma } from "../db/prisma.js";
 import type {
   ListAlertsQuery,
   ResolveAlertInput,
   UpdateAlertInput,
-} from "../schemas/alerts.schema";
-import { HttpError } from "../utils/http-error";
+} from "../schemas/alerts.schema.js";
+import { HttpError } from "../utils/http-error.js";
 
 export function listAlerts(query: ListAlertsQuery) {
   return prisma.alert.findMany({
@@ -30,8 +30,8 @@ async function findAlert(alertId: number) {
   return alert;
 }
 
-// Ack or unack an open alert. author stays null until UI sign-in exists.
-export async function updateAlert(alertId: number, input: UpdateAlertInput) {
+// Ack or unack an open alert. author is the signed-in user's name at the time.
+export async function updateAlert(alertId: number, input: UpdateAlertInput, author: string) {
   const alert = await findAlert(alertId);
   if (alert.status === "resolved") {
     throw new HttpError(409, "alert already resolved");
@@ -51,6 +51,7 @@ export async function updateAlert(alertId: number, input: UpdateAlertInput) {
         alertId,
         action: input.acknowledged ? "ack" : "unack",
         body: input.comment ?? null,
+        author,
       },
     }),
   ]);
@@ -65,7 +66,7 @@ export async function listAlertComments(alertId: number) {
   });
 }
 
-export async function resolveAlert(alertId: number, input: ResolveAlertInput) {
+export async function resolveAlert(alertId: number, input: ResolveAlertInput, author: string) {
   const alert = await findAlert(alertId);
   if (alert.status === "resolved") {
     throw new HttpError(409, "alert already resolved");
@@ -77,7 +78,7 @@ export async function resolveAlert(alertId: number, input: ResolveAlertInput) {
       data: { status: "resolved", resolvedAt: new Date() },
     }),
     prisma.alertComment.create({
-      data: { alertId, action: "resolve", body: input.note ?? null },
+      data: { alertId, action: "resolve", body: input.note ?? null, author },
     }),
   ]);
   return updated;

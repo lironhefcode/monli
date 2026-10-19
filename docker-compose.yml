@@ -28,6 +28,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-monli}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-monli}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8080/api}
       TRUST_PROXY: 172.28.0.10
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (see .env.example)}
+      AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy

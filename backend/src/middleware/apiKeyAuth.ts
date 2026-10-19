@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import { prisma } from "../db/prisma";
-import { verifyApiKey } from "../utils/api-key";
-import { HttpError } from "../utils/http-error";
+import { prisma } from "../db/prisma.js";
+import { verifyApiKey } from "../utils/api-key.js";
+import { HttpError } from "../utils/http-error.js";
 
 // Must run after validate({ params: targetIdParamsSchema }) so req.params.id
 // is already known to be a positive integer.

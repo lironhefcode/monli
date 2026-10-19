@@ -1,5 +1,5 @@
 import { Prisma, type TargetMetricOverride, type TemplateMetric } from "@prisma/client";
-import { prisma } from "../db/prisma";
+import { prisma } from "../db/prisma.js";
 import type {
   AssignTemplateInput,
   CreateTargetInput,
@@ -7,16 +7,16 @@ import type {
   OverrideInput,
   SubmitReadingInput,
   UpdateTargetInput,
-} from "../schemas/targets.schema";
+} from "../schemas/targets.schema.js";
 import {
   assertValidThresholds,
   DEFAULT_ALERT_SUBJECT,
   levelOf,
   renderMessage,
   type Level,
-} from "../utils/alert-levels";
-import { generateApiKey, hashApiKey } from "../utils/api-key";
-import { HttpError } from "../utils/http-error";
+} from "../utils/alert-levels.js";
+import { generateApiKey, hashApiKey } from "../utils/api-key.js";
+import { HttpError } from "../utils/http-error.js";
 
 async function resolveTemplateDefault(
   targetId: number,

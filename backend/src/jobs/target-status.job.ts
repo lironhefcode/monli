@@ -1,4 +1,4 @@
-import { prisma } from "../db/prisma";
+import { prisma } from "../db/prisma.js";
 
 // A target with no reading for this long is considered down. Readings set it
 // back to "up" (see submitReading).
