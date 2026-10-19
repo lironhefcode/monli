@@ -26,4 +26,5 @@ RUN npx prisma generate && npm run build
 COPY --from=agent-build /agent/target/release/monli-agent agent-dist/monli-agent-linux-x86_64
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+# Seed inserts only missing built-in metrics, so it's safe on every start.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/db/seed.js && node dist/index.js"]
