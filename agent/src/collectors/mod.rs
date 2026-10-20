@@ -1,18 +1,25 @@
 //! Built-in collectors, looked up by the server's `metric_key`.
 
 mod cpu;
-mod cpu_time;
 mod disk;
-mod diskio;
-mod inode;
 mod load;
 mod memory;
 mod network;
 mod process;
 mod sampler;
 mod swap;
-mod tcp;
 mod uptime;
+
+// These read /proc or /sys, so they only exist on Linux.
+#[cfg(target_os = "linux")]
+mod cpu_time;
+#[cfg(target_os = "linux")]
+mod diskio;
+#[cfg(target_os = "linux")]
+mod inode;
+#[cfg(target_os = "linux")]
+mod tcp;
+#[cfg(target_os = "linux")]
 mod vmstat;
 
 use std::collections::HashMap;
@@ -32,6 +39,8 @@ pub trait Collector: Send + Sync {
 
 pub type Registry = HashMap<&'static str, Arc<dyn Collector>>;
 
+/// The collectors this OS supports. Metrics without one here are never
+/// scheduled (the scheduler skips them), so they just show no data.
 pub fn registry() -> Registry {
     let mut registry: Registry = HashMap::new();
     registry.insert("cpu_utilization", Arc::new(cpu::CpuPercent::new()));
@@ -42,22 +51,27 @@ pub fn registry() -> Registry {
     registry.insert("load_per_core_5m", Arc::new(load::LoadPerCore::five_minutes()));
     registry.insert("load_per_core_15m", Arc::new(load::LoadPerCore::fifteen_minutes()));
     registry.insert("process_count", Arc::new(process::ProcessCount));
-    registry.insert("process_zombie_count", Arc::new(process::ZombieCount));
     registry.insert("system_uptime", Arc::new(uptime::SystemUptime));
     registry.insert("network_receive_rate", Arc::new(CounterRate::new(network::received_bytes)));
     registry.insert("network_transmit_rate", Arc::new(CounterRate::new(network::transmitted_bytes)));
     registry.insert("network_error_rate", Arc::new(CounterRate::new(network::errors)));
-    registry.insert("disk_read_rate", Arc::new(CounterRate::new(diskio::read_bytes)));
-    registry.insert("disk_write_rate", Arc::new(CounterRate::new(diskio::written_bytes)));
-    registry.insert("cpu_iowait", Arc::new(cpu_time::CpuTimeShare::iowait()));
-    registry.insert("cpu_steal", Arc::new(cpu_time::CpuTimeShare::steal()));
-    registry.insert("disk_inode_utilization", Arc::new(inode::InodeUtilization));
-    registry.insert("tcp_established_count", Arc::new(tcp::TcpEstablishedCount));
-    registry.insert("swap_paging_rate", Arc::new(CounterRate::new(vmstat::swapped_pages)));
+
+    #[cfg(target_os = "linux")]
+    {
+        // Windows has no zombie process state, so it would always read 0.
+        registry.insert("process_zombie_count", Arc::new(process::ZombieCount));
+        registry.insert("disk_read_rate", Arc::new(CounterRate::new(diskio::read_bytes)));
+        registry.insert("disk_write_rate", Arc::new(CounterRate::new(diskio::written_bytes)));
+        registry.insert("cpu_iowait", Arc::new(cpu_time::CpuTimeShare::iowait()));
+        registry.insert("cpu_steal", Arc::new(cpu_time::CpuTimeShare::steal()));
+        registry.insert("disk_inode_utilization", Arc::new(inode::InodeUtilization));
+        registry.insert("tcp_established_count", Arc::new(tcp::TcpEstablishedCount));
+        registry.insert("swap_paging_rate", Arc::new(CounterRate::new(vmstat::swapped_pages)));
+    }
     registry
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", windows)))]
 mod tests {
     /// Every built-in collector produces a finite value on this host.
     #[tokio::test]

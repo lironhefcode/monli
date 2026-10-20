@@ -1,6 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use sysinfo::{Process, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
+#[cfg(target_os = "linux")]
+use sysinfo::ProcessStatus;
+use sysinfo::{Process, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use super::Collector;
 
@@ -27,8 +29,10 @@ impl Collector for ProcessCount {
 }
 
 /// Exited processes whose parent has not collected them yet.
+#[cfg(target_os = "linux")]
 pub struct ZombieCount;
 
+#[cfg(target_os = "linux")]
 #[async_trait]
 impl Collector for ZombieCount {
     async fn collect(&self) -> Result<f64> {

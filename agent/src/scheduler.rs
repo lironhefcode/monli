@@ -43,6 +43,8 @@ pub struct Scheduler {
     sending: Option<JoinHandle<()>>,
     refreshing: Option<JoinHandle<Result<Vec<MetricSpec>, ApiError>>>,
     last_refresh: Instant,
+    /// Assigned metrics with no collector on this OS, so each is logged once.
+    unsupported: HashSet<String>,
 }
 
 impl Scheduler {
@@ -63,16 +65,19 @@ impl Scheduler {
             sending: None,
             refreshing: None,
             last_refresh: Instant::now(),
+            unsupported: HashSet::new(),
         };
         scheduler.apply_metric_list(initial);
         scheduler
     }
 
-    /// Runs until Ctrl-C.
-    pub async fn run(mut self) -> Result<()> {
+    /// Runs until `shutdown` completes (Ctrl-C, or a stop from the Windows
+    /// service manager).
+    pub async fn run(mut self, shutdown: impl Future<Output = ()>) -> Result<()> {
         let mut tick = tokio::time::interval(TICK);
         // If a tick is late (e.g. the machine slept), don't fire a burst to catch up.
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut shutdown = std::pin::pin!(shutdown);
 
         loop {
             // Use the tick's scheduled time, not the wake-up time: wake-ups
@@ -80,7 +85,7 @@ impl Scheduler {
             // old and slip a whole tick.
             let now = tokio::select! {
                 scheduled = tick.tick() => scheduled.into_std(),
-                _ = tokio::signal::ctrl_c() => {
+                () = &mut shutdown => {
                     info!("shutting down");
                     return Ok(());
                 }
@@ -183,6 +188,8 @@ impl Scheduler {
             }
             keep
         });
+        // Unassigned and later reassigned: worth logging again.
+        self.unsupported.retain(|key| wanted.contains(key.as_str()));
 
         for spec in list {
             let interval = Duration::from_secs(spec.report_interval_sec.max(1));
@@ -203,7 +210,12 @@ impl Scheduler {
                         },
                     );
                 }
-                None => warn!(metric_key = %spec.metric_key, "no collector for this metric; skipping"),
+                None => {
+                    // The list is re-applied every REFRESH; say it once.
+                    if self.unsupported.insert(spec.metric_key.clone()) {
+                        warn!(metric_key = %spec.metric_key, "no collector for this metric on this OS; skipping");
+                    }
+                }
             }
         }
     }

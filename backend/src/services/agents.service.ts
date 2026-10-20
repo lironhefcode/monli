@@ -18,16 +18,35 @@ function buildInstallCommand(os: AgentOs, token: string): string {
   }
 }
 
-export async function createEnrollmentToken(os: AgentOs) {
+async function mintEnrollmentToken() {
   const token = generateApiKey();
   const expiresAt = new Date(Date.now() + ENROLLMENT_TOKEN_TTL_MS);
   await prisma.enrollmentToken.create({
     data: { tokenHash: hashApiKey(token), expiresAt },
   });
+  return { token, expiresAt };
+}
 
+export async function createEnrollmentToken(os: AgentOs) {
+  const { token, expiresAt } = await mintEnrollmentToken();
   const installCommand = buildInstallCommand(os, token);
 
   return { token, expiresAt, os, serverUrl: env.PUBLIC_API_URL, installCommand };
+}
+
+// Must match what agent/src/baked.rs reads from the end of the exe.
+const BAKED_MAGIC = Buffer.from("MONLICFG", "ascii");
+
+// Mints a token for one Windows exe download and returns the bytes to append
+// to the exe: JSON {server, token}, its length (u32 little-endian), then the
+// magic. The token goes nowhere else, so it never shows up in a URL or a log.
+export async function createWindowsAgentTrailer() {
+  const { token, expiresAt } = await mintEnrollmentToken();
+  const payload = Buffer.from(JSON.stringify({ server: env.PUBLIC_API_URL, token }), "utf8");
+  const length = Buffer.alloc(4);
+  length.writeUInt32LE(payload.length);
+
+  return { trailer: Buffer.concat([payload, length, BAKED_MAGIC]), expiresAt };
 }
 
 export async function registerAgent(token: string, sourceIp: string, input: RegisterAgentInput) {

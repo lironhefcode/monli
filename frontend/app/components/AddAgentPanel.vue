@@ -12,23 +12,26 @@ interface EnrollmentToken {
 
 const osOptions: { value: AgentOs; label: string; available: boolean }[] = [
   { value: "linux", label: "Linux", available: true },
-  { value: "windows", label: "Windows", available: false },
+  { value: "windows", label: "Windows", available: true },
 ];
+
+const WINDOWS_FILENAME = "monli-agent-setup.exe";
 
 const toast = useToast();
 
 const open = ref(false);
 const os = ref<AgentOs>("linux");
 const enrollment = ref<EnrollmentToken | null>(null);
+// Set once the Windows exe has been downloaded; its token is inside the file.
+const windowsDownload = ref<{ expiresAt: string } | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const copied = ref(false);
 
-const expiresAtLabel = computed(() =>
-  enrollment.value
-    ? new Date(enrollment.value.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : ""
-);
+const expiresAtLabel = computed(() => {
+  const expiresAt = enrollment.value?.expiresAt ?? windowsDownload.value?.expiresAt;
+  return expiresAt ? new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+});
 
 const osGroup = useTemplateRef<HTMLElement>("osGroup");
 
@@ -39,11 +42,13 @@ async function start() {
   osGroup.value?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
 }
 
-// Hides the command again; a token already minted stays valid until it expires.
+// Hides the command or download again; a token already minted stays valid
+// until it expires.
 function cancel() {
   open.value = false;
   os.value = "linux";
   enrollment.value = null;
+  windowsDownload.value = null;
   error.value = null;
   copied.value = false;
 }
@@ -53,7 +58,22 @@ function selectOs(value: AgentOs) {
   if (value === os.value) return;
   os.value = value;
   enrollment.value = null;
+  windowsDownload.value = null;
   error.value = null;
+}
+
+// The backend's error handler responds with { error: string }. A request for
+// a blob gets its error body as a blob too.
+async function errorMessage(err: unknown): Promise<string> {
+  let data = (err as { data?: unknown }).data;
+  if (data instanceof Blob) {
+    try {
+      data = JSON.parse(await data.text());
+    } catch {
+      data = undefined;
+    }
+  }
+  return (data as { error?: string } | undefined)?.error ?? "Could not reach the server";
 }
 
 // Each call mints a new single-use token, so this only ever runs on click.
@@ -67,12 +87,41 @@ async function generate() {
       body: { os: os.value },
     });
   } catch (err) {
-    // The backend's error handler responds with { error: string }.
-    const data = (err as { data?: { error?: string } }).data;
-    error.value = data?.error ?? "Could not reach the server";
+    error.value = await errorMessage(err);
   } finally {
     loading.value = false;
   }
+}
+
+// Each call mints a new single-use token baked into the exe, so this only
+// ever runs on click. Fetched rather than linked so errors show here instead
+// of as a broken download.
+async function downloadWindowsAgent() {
+  loading.value = true;
+  error.value = null;
+  try {
+    const response = await $fetch.raw<Blob>("/api/agents/download/windows-x86_64", {
+      method: "POST",
+      responseType: "blob",
+    });
+    saveFile(response._data!, WINDOWS_FILENAME);
+    windowsDownload.value = { expiresAt: response.headers.get("x-enrollment-expires-at") ?? "" };
+  } catch (err) {
+    error.value = await errorMessage(err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+// Hands a fetched file to the browser's downloads.
+function saveFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  // Some browsers read the URL only after click() returns.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 async function copy() {
@@ -120,12 +169,19 @@ async function copy() {
               {{ option.label }}
             </button>
           </div>
-          <span class="text-dimmed">Windows support is coming soon.</span>
         </div>
       </fieldset>
 
       <div class="flex gap-2">
         <UButton
+          v-if="os === 'windows'"
+          :label="windowsDownload ? 'Download again' : 'Download agent'"
+          icon="i-lucide-download"
+          :loading="loading"
+          @click="downloadWindowsAgent"
+        />
+        <UButton
+          v-else
           :label="enrollment ? 'Generate new command' : 'Generate install command'"
           :loading="loading"
           @click="generate"
@@ -133,7 +189,28 @@ async function copy() {
         <UButton label="Cancel" color="neutral" variant="ghost" @click="cancel" />
       </div>
 
-      <UAlert v-if="error" color="error" variant="subtle" title="Could not generate a command" :description="error" />
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        :title="os === 'windows' ? 'Could not download the agent' : 'Could not generate a command'"
+        :description="error"
+      />
+
+      <div v-if="windowsDownload" class="rounded-(--ui-radius) border border-default bg-default">
+        <p class="border-b border-default px-4 py-2 text-muted">Downloaded {{ WINDOWS_FILENAME }}</p>
+        <ol class="list-decimal space-y-1 py-3 pr-4 pl-9 text-highlighted">
+          <li>Copy it to the target host and double-click it.</li>
+          <li>Approve the administrator prompt.</li>
+          <li>
+            If Windows SmartScreen warns about an unrecognized app, choose <strong>More info</strong>, then
+            <strong>Run anyway</strong>.
+          </li>
+        </ol>
+        <p class="border-t border-default px-4 py-2 text-muted">
+          Works once and expires at {{ expiresAtLabel }}.
+        </p>
+      </div>
 
       <div v-if="enrollment" class="rounded-(--ui-radius) border border-default bg-default">
         <div class="flex items-center justify-between gap-3 border-b border-default px-4 py-2">
