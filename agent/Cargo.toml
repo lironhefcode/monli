@@ -19,7 +19,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 # Async runtime: timers, signals, and the thread pool that drives `async fn`s.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
 # Structured logging.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -37,6 +37,17 @@ humantime = "2"
 [target.'cfg(unix)'.dependencies]
 # statvfs(), for inode usage (no safe wrapper in std or sysinfo).
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Runs the agent as a Windows service and installs it (the Windows systemd).
+windows-service = "0.8"
+# Daily log files for the service, which has no console to log to.
+tracing-appender = "0.2"
+
+[build-dependencies]
+# Windows manifest asking for admin, so double-clicking the exe shows a UAC
+# prompt. Pure Rust, so it also works when cross-compiling from Linux.
+embed-manifest = "1.5"
 
 [profile.release]
 # Smaller static binary: strip symbols, whole-program optimisation.

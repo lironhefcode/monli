@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 // OSes the server can build an install command for. Extend alongside the
-// install scripts and agent binaries it serves.
+// install scripts and agent binaries it serves. Windows has no command: its
+// token is baked into the exe download (POST /agents/download/windows-x86_64).
 export const supportedAgentOs = ["linux"] as const;
 
 export const createEnrollmentTokenSchema = z.object({

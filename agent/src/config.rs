@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(windows))]
 pub const DEFAULT_PATH: &str = "/var/lib/monli/credentials.toml";
+#[cfg(windows)]
+pub const DEFAULT_PATH: &str = r"C:\ProgramData\Monli\credentials.toml";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Credentials {
@@ -67,7 +70,8 @@ pub fn save(path: &Path, creds: &Credentials) -> Result<()> {
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     // Only the owning user may read the API key. Windows has no mode bits;
-    // there the file inherits the directory's ACL.
+    // there the file inherits the directory's ACL, which the installer
+    // limits to SYSTEM and Administrators (install.rs).
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;

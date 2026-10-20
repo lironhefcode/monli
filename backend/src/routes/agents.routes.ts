@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { validate } from "../middleware/validate.js";
@@ -8,7 +9,7 @@ import {
   type CreateEnrollmentTokenInput,
   type RegisterAgentInput,
 } from "../schemas/agents.schema.js";
-import { createEnrollmentToken, registerAgent } from "../services/agents.service.js";
+import { createEnrollmentToken, createWindowsAgentTrailer, registerAgent } from "../services/agents.service.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { HttpError } from "../utils/http-error.js";
 
@@ -43,6 +44,38 @@ agentsRouter.get("/download/linux-x86_64", (_req: Request, res: Response, next: 
     "agent binary not built (build the backend Docker image)"
   );
 });
+
+// POST /agents/download/windows-x86_64 — admin-facing: the Windows agent exe
+// with the server URL and a newly minted single-use token appended, so that
+// double-clicking it installs the agent (agent/src/baked.rs). A POST the UI
+// sends on click, not a link: each request mints a token, so prefetching or
+// another site sending the browser here mustn't be able to.
+agentsRouter.post(
+  "/download/windows-x86_64",
+  requirePermission("edit"),
+  asyncHandler(async (_req: Request, res: Response) => {
+    // Read before minting, so a missing exe doesn't leave a token behind.
+    let exe: Buffer;
+    try {
+      exe = await readFile(path.join(AGENT_DIST_DIR, "monli-agent-windows-x86_64.exe"));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new HttpError(404, "agent binary not built (build the backend Docker image)");
+      }
+      throw err;
+    }
+
+    const { trailer, expiresAt } = await createWindowsAgentTrailer();
+    res.set({
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": 'attachment; filename="monli-agent-setup.exe"',
+      // The file is a credential until the token is used or expires.
+      "Cache-Control": "no-store",
+      "X-Enrollment-Expires-At": expiresAt.toISOString(),
+    });
+    res.send(Buffer.concat([exe, trailer]));
+  })
+);
 
 // Express reports IPv4 clients on a dual-stack socket as "::ffff:a.b.c.d".
 function normalizeIp(ip: string): string {

@@ -9,7 +9,6 @@ pub struct InodeUtilization;
 
 #[async_trait]
 impl Collector for InodeUtilization {
-    #[cfg(unix)]
     async fn collect(&self) -> Result<f64> {
         // SAFETY: statvfs is a plain C struct; all-zero is a valid value.
         let mut stats: libc::statvfs = unsafe { std::mem::zeroed() };
@@ -25,10 +24,5 @@ impl Collector for InodeUtilization {
         }
         let used = total.saturating_sub(stats.f_ffree as u64);
         Ok(used as f64 / total as f64 * 100.0)
-    }
-
-    #[cfg(not(unix))]
-    async fn collect(&self) -> Result<f64> {
-        bail!("inode utilization is only collected on Linux");
     }
 }

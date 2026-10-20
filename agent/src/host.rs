@@ -14,7 +14,8 @@ pub struct HostIdentity {
     pub os: &'static str,
     /// "x86_64", "aarch64", ... (Rust's `std::env::consts::ARCH`).
     pub arch: &'static str,
-    /// e.g. "Ubuntu 22.04 (WSL)". Detected at runtime; omitted when unknown.
+    /// e.g. "Ubuntu 22.04 (WSL)" or "Windows 11 Pro". Detected at runtime;
+    /// omitted when unknown.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub distro: Option<String>,
 }
@@ -45,7 +46,13 @@ fn distro() -> Option<String> {
     format_distro(&os_release, wsl)
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Windows edition from the registry, e.g. "Windows 11 Pro".
+#[cfg(windows)]
+fn distro() -> Option<String> {
+    sysinfo::System::long_os_version()
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn distro() -> Option<String> {
     None
 }

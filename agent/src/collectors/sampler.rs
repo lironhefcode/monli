@@ -92,6 +92,7 @@ impl super::Collector for CounterRate {
 }
 
 /// Reads a Linux kernel file under /proc or /sys.
+#[cfg(target_os = "linux")]
 pub fn read_kernel_file(path: &str) -> Result<String> {
     std::fs::read_to_string(path).with_context(|| format!("reading {path} (Linux only)"))
 }
