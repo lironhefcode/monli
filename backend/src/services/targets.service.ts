@@ -6,11 +6,13 @@ import type {
   HistoryRange,
   OverrideInput,
   SubmitReadingInput,
+  UpdateInterfaceInput,
   UpdateTargetInput,
 } from "../schemas/targets.schema.js";
 import {
   assertValidThresholds,
   DEFAULT_ALERT_SUBJECT,
+  DEFAULT_INTERFACE_ALERT_SUBJECT,
   levelOf,
   renderMessage,
   type Level,
@@ -70,8 +72,8 @@ export async function listTargets() {
   return targets.sort((a, b) => (a.alias ?? a.name).localeCompare(b.alias ?? b.name));
 }
 
-// GET /targets/:id — admin detail: metadata, assigned templates, and the
-// resolved policy of every metric the target inherits.
+// GET /targets/:id — admin detail: metadata, assigned templates, interfaces,
+// and the resolved policy of every metric the target inherits.
 export async function getTargetDetail(targetId: number) {
   const target = await prisma.target.findUnique({
     where: { id: targetId },
@@ -80,6 +82,10 @@ export async function getTargetDetail(targetId: number) {
       targetTemplates: {
         include: { template: { select: { id: true, name: true } } },
         orderBy: { id: "asc" },
+      },
+      interfaces: {
+        select: { id: true, kind: true, name: true, monitored: true, lastSeenAt: true },
+        orderBy: [{ kind: "asc" }, { name: "asc" }],
       },
     },
   });
@@ -92,7 +98,7 @@ export async function getTargetDetail(targetId: number) {
     where: { template: { targetTemplates: { some: { targetId } } } },
     orderBy: { id: "asc" },
     include: {
-      metric: { select: { id: true, metricKey: true, unit: true } },
+      metric: { select: { id: true, metricKey: true, unit: true, deviceKind: true } },
       template: { select: { id: true, name: true } },
     },
   });
@@ -275,6 +281,12 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
   if (!metric) {
     throw new HttpError(404, "unknown metric_key");
   }
+  if (metric.deviceKind && !input.device) {
+    throw new HttpError(422, "metric is measured per device; device is required");
+  }
+  if (!metric.deviceKind && input.device) {
+    throw new HttpError(422, "metric is host-wide; device is not allowed");
+  }
 
   const templateDefault = await resolveTemplateDefault(targetId, metric.id);
   if (!templateDefault) {
@@ -289,23 +301,39 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
 
   const recordedAt = input.recorded_at ? new Date(input.recorded_at) : new Date();
 
-  const reading = await prisma.metricReading.create({
-    data: {
-      targetId,
-      metricId: metric.id,
-      value: input.value,
-      recordedAt,
-    },
-  });
-
   await prisma.target.update({
     where: { id: targetId },
     data: { lastSeenAt: recordedAt, status: "up" },
   });
 
+  // Interfaces are created the first time the agent reports them.
+  const targetInterface =
+    metric.deviceKind && input.device
+      ? await prisma.targetInterface.upsert({
+          where: { targetId_kind_name: { targetId, kind: metric.deviceKind, name: input.device } },
+          create: { targetId, kind: metric.deviceKind, name: input.device, lastSeenAt: recordedAt },
+          update: { lastSeenAt: recordedAt },
+        })
+      : null;
+  // Not monitored: the reading is dropped, so it is neither stored nor alerted on.
+  if (targetInterface && !targetInterface.monitored) {
+    return null;
+  }
+  const interfaceId = targetInterface?.id ?? null;
+
+  const reading = await prisma.metricReading.create({
+    data: {
+      targetId,
+      metricId: metric.id,
+      interfaceId,
+      value: input.value,
+      recordedAt,
+    },
+  });
+
   const level = levelOf(input.value, policy.condition, policy.warningThreshold, policy.criticalThreshold);
   const openAlert = await prisma.alert.findFirst({
-    where: { targetId, metricId: metric.id, status: "open" },
+    where: { targetId, metricId: metric.id, interfaceId, status: "open" },
   });
 
   // An open alert keeps the name it opened with, even if the alias changed since.
@@ -315,20 +343,22 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     const context = {
       metric: metric.metricKey,
       host: hostName,
+      interface: targetInterface?.name ?? null,
       value: input.value,
       unit: metric.unit,
       severity: current,
       threshold: (current === "critical" ? policy.criticalThreshold : policy.warningThreshold) ?? 0,
     };
+    const defaultSubject = targetInterface ? DEFAULT_INTERFACE_ALERT_SUBJECT : DEFAULT_ALERT_SUBJECT;
     return {
-      subject: renderMessage(policy.alertSubject.trim() || DEFAULT_ALERT_SUBJECT, context),
+      subject: renderMessage(policy.alertSubject.trim() || defaultSubject, context),
       description: policy.alertDescription ? renderMessage(policy.alertDescription, context) : null,
     };
   };
 
   if (openAlert) {
-    // One alert per (target, metric): it follows the level, and a single
-    // healthy reading resolves it.
+    // One alert per (target, metric, interface): it follows the level, and a
+    // single healthy reading resolves it.
     await prisma.alert.update({
       where: { id: openAlert.id },
       data: level
@@ -339,7 +369,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     // consecutive_breaches guards against flapping: the last N readings (this
     // one included) must all breach some level before an alert opens.
     const recentReadings = await prisma.metricReading.findMany({
-      where: { targetId, metricId: metric.id },
+      where: { targetId, metricId: metric.id, interfaceId },
       orderBy: { recordedAt: "desc" },
       take: policy.consecutiveBreaches,
     });
@@ -355,6 +385,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
         data: {
           targetId,
           metricId: metric.id,
+          interfaceId,
           triggeredValue: input.value,
           lastValue: input.value,
           lastValueAt: recordedAt,
@@ -369,6 +400,32 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
   }
 
   return reading;
+}
+
+// Turning monitoring off also resolves the interface's open alerts, since no
+// reading will arrive to resolve them.
+export async function setInterfaceMonitored(
+  targetId: number,
+  interfaceId: number,
+  input: UpdateInterfaceInput
+) {
+  const existing = await prisma.targetInterface.findFirst({ where: { id: interfaceId, targetId } });
+  if (!existing) {
+    throw new HttpError(404, "interface not found");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    if (!input.monitored) {
+      await tx.alert.updateMany({
+        where: { interfaceId, status: "open" },
+        data: { status: "resolved", resolvedAt: new Date() },
+      });
+    }
+    return tx.targetInterface.update({
+      where: { id: interfaceId },
+      data: { monitored: input.monitored },
+    });
+  });
 }
 
 // Window length and bucket size per range, in seconds. Buckets keep every
@@ -386,8 +443,9 @@ export interface HistoryPoint {
   max: number;
 }
 
-// Readings of every metric on the target within the range, averaged per time
-// bucket. max keeps short spikes visible that the average flattens.
+// Readings of every metric (and, for per-device metrics, every interface) on
+// the target within the range, averaged per time bucket. max keeps short
+// spikes visible that the average flattens.
 export async function getTargetHistory(targetId: number, range: HistoryRange) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
@@ -395,30 +453,37 @@ export async function getTargetHistory(targetId: number, range: HistoryRange) {
   }
 
   const { span, bucket } = historyWindows[range];
-  const rows = await prisma.$queryRaw<{ metric_id: number; t: Date; avg: number; max: number }[]>`
+  const rows = await prisma.$queryRaw<
+    { metric_id: number; interface_id: number | null; t: Date; avg: number; max: number }[]
+  >`
     SELECT
       metric_id,
+      interface_id,
       to_timestamp(floor(extract(epoch FROM recorded_at) / ${bucket}) * ${bucket}) AS t,
       avg(value) AS avg,
       max(value) AS max
     FROM metric_readings
     WHERE target_id = ${targetId}
       AND recorded_at >= now() - make_interval(secs => ${span})
-    GROUP BY metric_id, t
-    ORDER BY metric_id, t
+    GROUP BY metric_id, interface_id, t
+    ORDER BY metric_id, interface_id, t
   `;
 
-  const byMetric = new Map<number, HistoryPoint[]>();
+  // Rows arrive ordered by series, so a new series starts whenever the key changes.
+  const series: { metricId: number; interfaceId: number | null; points: HistoryPoint[] }[] = [];
   for (const row of rows) {
-    const points = byMetric.get(row.metric_id) ?? [];
-    points.push({ t: row.t.toISOString(), avg: Number(row.avg), max: Number(row.max) });
-    byMetric.set(row.metric_id, points);
+    let current = series.at(-1);
+    if (current?.metricId !== row.metric_id || current.interfaceId !== row.interface_id) {
+      current = { metricId: row.metric_id, interfaceId: row.interface_id, points: [] };
+      series.push(current);
+    }
+    current.points.push({ t: row.t.toISOString(), avg: Number(row.avg), max: Number(row.max) });
   }
   return {
     range,
     bucketSec: bucket,
     from: new Date(Date.now() - span * 1000).toISOString(),
     to: new Date().toISOString(),
-    metrics: [...byMetric].map(([metricId, points]) => ({ metricId, points })),
+    metrics: series,
   };
 }

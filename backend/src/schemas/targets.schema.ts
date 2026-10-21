@@ -12,6 +12,14 @@ export const targetMetricParamsSchema = targetIdParamsSchema.extend({
   metricId: z.coerce.number().int().positive(),
 });
 
+export const targetInterfaceParamsSchema = targetIdParamsSchema.extend({
+  interfaceId: z.coerce.number().int().positive(),
+});
+
+export const updateInterfaceSchema = z.object({
+  monitored: z.boolean(),
+});
+
 export const createTargetSchema = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
@@ -63,6 +71,8 @@ export const overrideSchema = z.object({
 
 export const submitReadingSchema = z.object({
   metric_key: z.string().min(1),
+  // Interface the value was measured on; required exactly for per-device metrics.
+  device: z.string().trim().min(1).max(255).optional(),
   value: z.number(),
   recorded_at: z.string().datetime().optional(),
 });
@@ -76,6 +86,8 @@ export const historyQuerySchema = z.object({
 export type TargetIdParams = z.infer<typeof targetIdParamsSchema>;
 export type TargetTemplateParams = z.infer<typeof targetTemplateParamsSchema>;
 export type TargetMetricParams = z.infer<typeof targetMetricParamsSchema>;
+export type TargetInterfaceParams = z.infer<typeof targetInterfaceParamsSchema>;
+export type UpdateInterfaceInput = z.infer<typeof updateInterfaceSchema>;
 export type CreateTargetInput = z.infer<typeof createTargetSchema>;
 export type UpdateTargetInput = z.infer<typeof updateTargetSchema>;
 export type AssignTemplateInput = z.infer<typeof assignTemplateSchema>;

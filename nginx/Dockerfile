@@ -8,6 +8,8 @@ COPY frontend/package.json frontend/
 RUN npm ci --workspace frontend --ignore-scripts
 
 COPY frontend frontend
+# The auth client types its roles from the backend's access-control definitions.
+COPY backend/src/auth/permissions.ts backend/src/auth/permissions.ts
 WORKDIR /app/frontend
 RUN npx nuxt prepare && npm run build
 

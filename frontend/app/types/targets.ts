@@ -1,3 +1,5 @@
+import type { DeviceKind } from "./monitoring";
+
 export type TargetStatus = "up" | "down" | "unknown";
 
 // Item from GET /targets.
@@ -15,7 +17,7 @@ export interface TargetSummary {
 
 // A metric the target inherits, with its resolved policy.
 export interface TargetMetric {
-  metric: { id: number; metricKey: string; unit: string | null };
+  metric: { id: number; metricKey: string; unit: string | null; deviceKind: DeviceKind | null };
   source: { id: number; name: string };
   overridden: boolean;
   reportIntervalSec: number;
@@ -31,6 +33,16 @@ export interface TargetMetric {
   priority: "p1" | "p2" | "p3" | "p4";
 }
 
+// A mount point, disk or NIC the agent reports per-device metrics for.
+export interface TargetInterface {
+  id: number;
+  kind: DeviceKind;
+  name: string;
+  // Off: its readings are dropped, so it is neither stored nor alerted on.
+  monitored: boolean;
+  lastSeenAt: string;
+}
+
 // GET /targets/:id.
 export interface TargetDetail extends TargetSummary {
   type: string;
@@ -42,6 +54,7 @@ export interface TargetDetail extends TargetSummary {
   createdAt: string;
   templates: { id: number; name: string }[];
   metrics: TargetMetric[];
+  interfaces: TargetInterface[];
 }
 
 // Body for PATCH /targets/:id; null clears a field.
@@ -72,5 +85,6 @@ export interface TargetHistory {
   bucketSec: number;
   from: string;
   to: string;
-  metrics: { metricId: number; points: HistoryPoint[] }[];
+  // One series per metric, and per interface for per-device metrics.
+  metrics: { metricId: number; interfaceId: number | null; points: HistoryPoint[] }[];
 }

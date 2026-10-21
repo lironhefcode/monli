@@ -48,6 +48,10 @@ pub struct MetricSpec {
 #[derive(Debug, Clone, Serialize)]
 pub struct Reading {
     pub metric_key: String,
+    /// Interface the value belongs to (mount point, disk, NIC); left out of
+    /// the JSON for host-wide metrics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
     pub value: f64,
     /// RFC 3339, stamped when collected so a late send keeps the right time.
     pub recorded_at: String,

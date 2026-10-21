@@ -5,8 +5,9 @@
 //! 2. starts a send of pending readings, unless a send is still in flight;
 //! 3. every `REFRESH`, re-fetches the metric list from the server.
 //!
-//! Only the latest unsent reading per metric is kept, so an outage costs
-//! history but never grows memory.
+//! Only the latest unsent reading per series (metric, plus device for
+//! per-device metrics) is kept, so an outage costs history but never grows
+//! memory.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -18,17 +19,20 @@ use tokio::time::MissedTickBehavior;
 use tracing::{debug, info, warn};
 
 use crate::api_client::{ApiClient, ApiError, MetricSpec, Reading};
-use crate::collectors::{Collector, Registry};
+use crate::collectors::{DeviceCollector, Registry};
 
 const TICK: Duration = Duration::from_secs(5);
 const REFRESH: Duration = Duration::from_secs(60);
 
-/// Latest unsent reading per `metric_key`, shared with collector and send tasks.
-type Pending = Arc<Mutex<HashMap<String, Reading>>>;
+/// One series: a `metric_key`, and the device it was measured on (if any).
+type SeriesKey = (String, Option<String>);
+
+/// Latest unsent reading per series, shared with collector and send tasks.
+type Pending = Arc<Mutex<HashMap<SeriesKey, Reading>>>;
 
 struct MetricState {
     interval: Duration,
-    collector: Arc<dyn Collector>,
+    collector: Arc<dyn DeviceCollector>,
     last_run: Option<Instant>,
     running: Option<JoinHandle<()>>,
 }
@@ -115,16 +119,21 @@ impl Scheduler {
             let key = key.clone();
             metric.running = Some(tokio::spawn(async move {
                 match collector.collect().await {
-                    Ok(value) => {
-                        debug!(metric_key = %key, value, "collected");
-                        let reading = Reading {
-                            metric_key: key.clone(),
-                            value,
-                            recorded_at: humantime::format_rfc3339_millis(SystemTime::now())
-                                .to_string(),
-                        };
-                        // Replaces any older unsent reading for this metric.
-                        lock(&pending).insert(key, reading);
+                    Ok(samples) => {
+                        let recorded_at =
+                            humantime::format_rfc3339_millis(SystemTime::now()).to_string();
+                        let mut pending = lock(&pending);
+                        for sample in samples {
+                            debug!(metric_key = %key, device = ?sample.device, value = sample.value, "collected");
+                            let reading = Reading {
+                                metric_key: key.clone(),
+                                device: sample.device,
+                                value: sample.value,
+                                recorded_at: recorded_at.clone(),
+                            };
+                            // Replaces any older unsent reading for this series.
+                            pending.insert(series_key(&reading), reading);
+                        }
                     }
                     Err(e) => {
                         warn!(metric_key = %key, error = %format!("{e:#}"), "collection failed; nothing sent");
@@ -233,26 +242,37 @@ async fn send_batch(
     let mut readings = batch.into_iter();
     while let Some(reading) = readings.next() {
         match client.submit_reading(target_id, api_key, &reading).await {
-            Ok(()) => debug!(metric_key = %reading.metric_key, "reading sent"),
+            Ok(()) => {
+                debug!(metric_key = %reading.metric_key, device = ?reading.device, "reading sent");
+            }
             Err(e) if e.is_retryable() => {
                 warn!(error = %e, "sending readings failed; will retry next tick");
                 // Server unreachable: don't try the rest of the batch now.
                 let mut pending = lock(pending);
                 for r in std::iter::once(reading).chain(readings) {
-                    pending.entry(r.metric_key.clone()).or_insert(r);
+                    pending.entry(series_key(&r)).or_insert(r);
                 }
                 return;
             }
-            Err(e) => warn!(metric_key = %reading.metric_key, error = %e, "server rejected reading; dropped"),
+            Err(e) => warn!(
+                metric_key = %reading.metric_key,
+                device = ?reading.device,
+                error = %e,
+                "server rejected reading; dropped"
+            ),
         }
     }
+}
+
+fn series_key(reading: &Reading) -> SeriesKey {
+    (reading.metric_key.clone(), reading.device.clone())
 }
 
 fn is_idle<T>(handle: &Option<JoinHandle<T>>) -> bool {
     handle.as_ref().is_none_or(|h| h.is_finished())
 }
 
-fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<String, Reading>> {
+fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<SeriesKey, Reading>> {
     // The map stays valid even if a holder panicked, so recover it.
     pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

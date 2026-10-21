@@ -53,9 +53,15 @@ export function assertValidThresholds(
 export const DEFAULT_ALERT_SUBJECT =
   "{{metric}} on {{host}} is {{value}}{{unit}} ({{severity}} threshold {{threshold}}{{unit}})";
 
+// Same, for metrics measured per interface: names the interface that breached.
+export const DEFAULT_INTERFACE_ALERT_SUBJECT =
+  "{{metric}} on {{host}} {{interface}} is {{value}}{{unit}} ({{severity}} threshold {{threshold}}{{unit}})";
+
 export interface MessageContext {
   metric: string;
   host: string;
+  // Interface name (mount point, disk, NIC); null for host-wide metrics.
+  interface: string | null;
   value: number;
   unit: string | null;
   severity: Level;
@@ -71,6 +77,7 @@ export function renderMessage(template: string, context: MessageContext): string
   const values: Record<string, string> = {
     metric: context.metric,
     host: context.host,
+    interface: context.interface ?? "",
     value: formatNumber(context.value),
     unit: context.unit ?? "",
     severity: context.severity,

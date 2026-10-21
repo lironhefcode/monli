@@ -21,6 +21,10 @@ model Metric {
   defaultPriority          String? @map("default_priority")
   defaultReportIntervalSec Int?    @map("default_report_interval_sec")
   defaultAlertSubject      String? @map("default_alert_subject")
+  // Set for metrics measured per device ("filesystem", "disk" or "network"):
+  // each reading names its interface, and alerts open per interface. Null for
+  // host-wide metrics.
+  deviceKind               String? @map("device_kind")
 
   templateMetrics TemplateMetric[]
   overrides       TargetMetricOverride[]
@@ -92,8 +96,32 @@ model Target {
   readings         MetricReading[]
   alerts           Alert[]
   enrollmentTokens EnrollmentToken[]
+  interfaces       TargetInterface[]
 
   @@map("targets")
+}
+
+// A device on a target that per-device metrics are measured on: a mounted
+// filesystem, a physical disk or a NIC. Created the first time the agent
+// reports a reading for it; kept (with its history) after it stops reporting.
+model TargetInterface {
+  id          Int      @id @default(autoincrement())
+  targetId    Int      @map("target_id")
+  // Matches Metric.deviceKind: "filesystem", "disk" or "network".
+  kind        String
+  // Mount point, disk or NIC name, as the agent reports it.
+  name        String
+  // Off: readings for it are ignored, so it is neither stored nor alerted on.
+  monitored   Boolean  @default(true)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+
+  target   Target          @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  readings MetricReading[]
+  alerts   Alert[]
+
+  @@unique([targetId, kind, name])
+  @@map("target_interfaces")
 }
 
 // Single-use, short-lived token handed out with the agent install command.
@@ -152,16 +180,19 @@ model TargetMetricOverride {
 
 // Time-series data
 model MetricReading {
-  id         BigInt   @id @default(autoincrement())
-  targetId   Int      @map("target_id")
-  metricId   Int      @map("metric_id")
-  value      Float
-  recordedAt DateTime @default(now()) @map("recorded_at")
+  id          BigInt   @id @default(autoincrement())
+  targetId    Int      @map("target_id")
+  metricId    Int      @map("metric_id")
+  // Set exactly when the metric is per-device.
+  interfaceId Int?     @map("interface_id")
+  value       Float
+  recordedAt  DateTime @default(now()) @map("recorded_at")
 
-  target Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
-  metric Metric @relation(fields: [metricId], references: [id])
+  target    Target           @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric    Metric           @relation(fields: [metricId], references: [id])
+  interface TargetInterface? @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 
-  @@index([targetId, metricId, recordedAt(sort: Desc)], name: "idx_readings_target_metric_time")
+  @@index([targetId, metricId, interfaceId, recordedAt(sort: Desc)], name: "idx_readings_target_metric_time")
   @@map("metric_readings")
 }
 
@@ -170,6 +201,8 @@ model Alert {
   id              Int       @id @default(autoincrement())
   targetId        Int       @map("target_id")
   metricId        Int       @map("metric_id")
+  // One alert per (target, metric, interface); null for host-wide metrics.
+  interfaceId     Int?      @map("interface_id")
   triggeredValue  Float     @map("triggered_value")
   // Latest reading while open; severity follows the latest reading's level.
   lastValue       Float?    @map("last_value")
@@ -187,9 +220,10 @@ model Alert {
   // Can be undone; each change is recorded in comments.
   acknowledged    Boolean   @default(false)
 
-  target   Target         @relation(fields: [targetId], references: [id], onDelete: Cascade)
-  metric   Metric         @relation(fields: [metricId], references: [id])
-  comments AlertComment[]
+  target    Target           @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  metric    Metric           @relation(fields: [metricId], references: [id])
+  interface TargetInterface? @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  comments  AlertComment[]
 
   @@index([status], name: "idx_alerts_status")
   @@index([targetId], name: "idx_alerts_target")

@@ -17,6 +17,8 @@ export interface Alert {
   acknowledged: boolean;
   target: { id: number; name: string };
   metric: { id: number; metricKey: string; unit: string | null };
+  // The interface that breached, for per-device metrics.
+  interface: { id: number; kind: string; name: string } | null;
 }
 
 export type AlertAction = "ack" | "unack" | "resolve";

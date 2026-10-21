@@ -18,6 +18,7 @@ export function listAlerts(query: ListAlertsQuery) {
     include: {
       target: { select: { id: true, name: true } },
       metric: { select: { id: true, metricKey: true, unit: true } },
+      interface: { select: { id: true, kind: true, name: true } },
     },
   });
 }
