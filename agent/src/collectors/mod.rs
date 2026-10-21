@@ -10,11 +10,12 @@ mod sampler;
 mod swap;
 mod uptime;
 
+// Disk I/O counters exist on Linux (/sys/block) and Windows (per volume).
+#[cfg(any(target_os = "linux", windows))]
+mod diskio;
 // These read /proc or /sys, so they only exist on Linux.
 #[cfg(target_os = "linux")]
 mod cpu_time;
-#[cfg(target_os = "linux")]
-mod diskio;
 #[cfg(target_os = "linux")]
 mod inode;
 #[cfg(target_os = "linux")]
@@ -79,21 +80,28 @@ pub fn registry() -> Registry {
     registry.insert("load_per_core_15m", Arc::new(load::LoadPerCore::fifteen_minutes()));
     registry.insert("process_count", Arc::new(process::ProcessCount));
     registry.insert("system_uptime", Arc::new(uptime::SystemUptime));
-    registry.insert("network_receive_rate", Arc::new(DeviceCounterRate::new(network::received_bytes)));
-    registry.insert("network_transmit_rate", Arc::new(DeviceCounterRate::new(network::transmitted_bytes)));
+    let receive_rate = DeviceCounterRate::new(network::received_bytes);
+    registry.insert("network_receive_rate", Arc::new(receive_rate));
+    let transmit_rate = DeviceCounterRate::new(network::transmitted_bytes);
+    registry.insert("network_transmit_rate", Arc::new(transmit_rate));
     registry.insert("network_error_rate", Arc::new(DeviceCounterRate::new(network::errors)));
+
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        registry.insert("disk_read_rate", Arc::new(DeviceCounterRate::new(diskio::read_bytes)));
+        registry.insert("disk_write_rate", Arc::new(DeviceCounterRate::new(diskio::written_bytes)));
+    }
 
     #[cfg(target_os = "linux")]
     {
         // Windows has no zombie process state, so it would always read 0.
         registry.insert("process_zombie_count", Arc::new(process::ZombieCount));
-        registry.insert("disk_read_rate", Arc::new(DeviceCounterRate::new(diskio::read_bytes)));
-        registry.insert("disk_write_rate", Arc::new(DeviceCounterRate::new(diskio::written_bytes)));
         registry.insert("cpu_iowait", Arc::new(cpu_time::CpuTimeShare::iowait()));
         registry.insert("cpu_steal", Arc::new(cpu_time::CpuTimeShare::steal()));
         registry.insert("disk_inode_utilization", Arc::new(inode::InodeUtilization));
         registry.insert("tcp_established_count", Arc::new(tcp::TcpEstablishedCount));
-        registry.insert("swap_paging_rate", Arc::new(sampler::CounterRate::new(vmstat::swapped_pages)));
+        let paging_rate = sampler::CounterRate::new(vmstat::swapped_pages);
+        registry.insert("swap_paging_rate", Arc::new(paging_rate));
     }
     registry
 }

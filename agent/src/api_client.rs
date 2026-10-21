@@ -48,13 +48,27 @@ pub struct MetricSpec {
 #[derive(Debug, Clone, Serialize)]
 pub struct Reading {
     pub metric_key: String,
-    /// Interface the value belongs to (mount point, disk, NIC); left out of
-    /// the JSON for host-wide metrics.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<String>,
-    pub value: f64,
+    /// `flatten` writes the values' fields straight into this object.
+    #[serde(flatten)]
+    pub values: ReadingValues,
     /// RFC 3339, stamped when collected so a late send keeps the right time.
     pub recorded_at: String,
+}
+
+/// What a reading measured. `untagged` writes only the variant's fields, so
+/// `Host` is `"value": 1.5` and `Devices` is `"devices": [...]`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ReadingValues {
+    Host { value: f64 },
+    /// One value per interface (mount point, disk, NIC), sent together.
+    Devices { devices: Vec<DeviceValue> },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DeviceValue {
+    pub device: String,
+    pub value: f64,
 }
 
 // Shape of the server's errorHandler output.
@@ -135,4 +149,33 @@ async fn check(resp: Response) -> Result<Response, ApiError> {
         .map(|b| b.error)
         .unwrap_or(body);
     Err(ApiError::Http { status, message })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reading(values: ReadingValues) -> serde_json::Value {
+        let reading =
+            Reading { metric_key: "m".to_owned(), values, recorded_at: "t".to_owned() };
+        serde_json::to_value(reading).expect("a reading always serializes")
+    }
+
+    #[test]
+    fn readings_serialize_to_the_server_shape() {
+        let host = reading(ReadingValues::Host { value: 1.5 });
+        let devices = reading(ReadingValues::Devices {
+            devices: vec![DeviceValue { device: "/".to_owned(), value: 2.0 }],
+        });
+
+        assert_eq!(host, serde_json::json!({"metric_key": "m", "value": 1.5, "recorded_at": "t"}));
+        assert_eq!(
+            devices,
+            serde_json::json!({
+                "metric_key": "m",
+                "devices": [{"device": "/", "value": 2.0}],
+                "recorded_at": "t"
+            })
+        );
+    }
 }

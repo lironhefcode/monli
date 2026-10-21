@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TemplateMetricInput } from "~/types/monitoring";
 import type {
+  ChartSeries,
   HistoryRange,
   TargetDetail,
   TargetHistory,
@@ -63,21 +64,21 @@ const pointsBySeries = computed(
   () => new Map(history.value?.metrics.map((series) => [seriesKey(series.metricId, series.interfaceId), series.points]))
 );
 
-// One chart per host-wide metric, and one per monitored interface of its kind
-// for per-device metrics.
+// One chart per metric. Per-device metrics get a line per monitored interface
+// of their kind that has readings in the range.
 const charts = computed(() =>
-  (target.value?.metrics ?? []).flatMap((metric) => {
+  (target.value?.metrics ?? []).map((metric) => {
     const kind = metric.metric.deviceKind;
-    if (!kind) {
-      return [{ key: seriesKey(metric.metric.id, null), caption: metric.metric.metricKey, metric }];
-    }
-    return (target.value?.interfaces ?? [])
-      .filter((item) => item.kind === kind && item.monitored)
-      .map((item) => ({
-        key: seriesKey(metric.metric.id, item.id),
-        caption: `${metric.metric.metricKey} · ${item.name}`,
-        metric,
-      }));
+    const sources: { label: string | null; interfaceId: number | null }[] = kind
+      ? (target.value?.interfaces ?? [])
+          .filter((item) => item.kind === kind && item.monitored)
+          .map((item) => ({ label: item.name, interfaceId: item.id }))
+      : [{ label: null, interfaceId: null }];
+    const series: ChartSeries[] = sources.flatMap(({ label, interfaceId }) => {
+      const points = pointsBySeries.value.get(seriesKey(metric.metric.id, interfaceId));
+      return points?.length ? [{ label, points }] : [];
+    });
+    return { metric, series };
   })
 );
 
@@ -455,11 +456,15 @@ function formatDate(value: string | null) {
           <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
 
           <div v-else class="grid gap-px bg-(--ui-border) lg:grid-cols-2">
-            <figure v-for="chart in charts" :key="chart.key" class="bg-muted px-4 py-3 lg:last:odd:col-span-2">
-              <figcaption class="mb-2 font-mono text-highlighted">{{ chart.caption }}</figcaption>
+            <figure
+              v-for="chart in charts"
+              :key="chart.metric.metric.id"
+              class="bg-muted px-4 py-3 lg:last:odd:col-span-2"
+            >
+              <figcaption class="mb-2 font-mono text-highlighted">{{ chart.metric.metric.metricKey }}</figcaption>
               <MetricChart
-                v-if="pointsBySeries.get(chart.key)?.length"
-                :points="pointsBySeries.get(chart.key)!"
+                v-if="chart.series.length"
+                :series="chart.series"
                 :from="history.from"
                 :to="history.to"
                 :bucket-sec="history.bucketSec"

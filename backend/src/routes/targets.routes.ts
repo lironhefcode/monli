@@ -142,7 +142,8 @@ targetsRouter.patch(
     const targetInterface = await setInterfaceMonitored(
       Number(req.params.id),
       Number(req.params.interfaceId),
-      req.body
+      req.body,
+      req.user!.name
     );
     res.json(targetInterface);
   })
@@ -160,20 +161,21 @@ targetsRouter.get(
   })
 );
 
-// POST /targets/:id/metrics — agent-facing: submit a reading. 202 with no
-// body when the reading's interface isn't monitored (dropped).
+// POST /targets/:id/metrics — agent-facing: submit a reading (one value, or
+// one per interface). 202 with no body when nothing was stored because no
+// reported interface is monitored.
 targetsRouter.post(
   "/:id/metrics",
   validate({ params: targetIdParamsSchema, body: submitReadingSchema }),
   apiKeyAuth,
   asyncHandler(async (req: Request<Record<string, string>, unknown, SubmitReadingInput>, res: Response) => {
     const targetId = Number(req.params.id);
-    const reading = await submitReading(targetId, req.body);
-    if (!reading) {
+    const readings = await submitReading(targetId, req.body);
+    if (readings.length === 0) {
       res.status(202).end();
       return;
     }
-    res.status(201).json({ ...reading, id: reading.id.toString() });
+    res.status(201).json(readings.map((reading) => ({ ...reading, id: reading.id.toString() })));
   })
 );
 

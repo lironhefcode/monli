@@ -271,67 +271,34 @@ export async function getEffectiveMetrics(targetId: number) {
   });
 }
 
-export async function submitReading(targetId: number, input: SubmitReadingInput) {
-  const target = await prisma.target.findUnique({ where: { id: targetId } });
-  if (!target) {
-    throw new HttpError(404, "target not found");
-  }
+type Policy = ReturnType<typeof resolvePolicy>;
+type ReadingTarget = { id: number; name: string; alias: string | null };
+type ReadingMetric = { id: number; metricKey: string; unit: string | null };
 
-  const metric = await prisma.metric.findUnique({ where: { metricKey: input.metric_key } });
-  if (!metric) {
-    throw new HttpError(404, "unknown metric_key");
-  }
-  if (metric.deviceKind && !input.device) {
-    throw new HttpError(422, "metric is measured per device; device is required");
-  }
-  if (!metric.deviceKind && input.device) {
-    throw new HttpError(422, "metric is host-wide; device is not allowed");
-  }
+// Everything one reading is checked against, shared by every interface in a
+// per-device submit.
+interface ReadingContext {
+  target: ReadingTarget;
+  metric: ReadingMetric;
+  policy: Policy;
+  recordedAt: Date;
+}
 
-  const templateDefault = await resolveTemplateDefault(targetId, metric.id);
-  if (!templateDefault) {
-    throw new HttpError(422, "metric is not assigned to this target via any template");
-  }
-
-  const override = await prisma.targetMetricOverride.findUnique({
-    where: { targetId_metricId: { targetId, metricId: metric.id } },
-  });
-
-  const policy = resolvePolicy(templateDefault, override, target.responsibleTeam);
-
-  const recordedAt = input.recorded_at ? new Date(input.recorded_at) : new Date();
-
-  await prisma.target.update({
-    where: { id: targetId },
-    data: { lastSeenAt: recordedAt, status: "up" },
-  });
-
-  // Interfaces are created the first time the agent reports them.
-  const targetInterface =
-    metric.deviceKind && input.device
-      ? await prisma.targetInterface.upsert({
-          where: { targetId_kind_name: { targetId, kind: metric.deviceKind, name: input.device } },
-          create: { targetId, kind: metric.deviceKind, name: input.device, lastSeenAt: recordedAt },
-          update: { lastSeenAt: recordedAt },
-        })
-      : null;
-  // Not monitored: the reading is dropped, so it is neither stored nor alerted on.
-  if (targetInterface && !targetInterface.monitored) {
-    return null;
-  }
+// Stores one value and opens, updates or resolves its alert. targetInterface
+// is null for host-wide metrics.
+async function recordValue(
+  { target, metric, policy, recordedAt }: ReadingContext,
+  targetInterface: { id: number; name: string } | null,
+  value: number
+) {
+  const targetId = target.id;
   const interfaceId = targetInterface?.id ?? null;
 
   const reading = await prisma.metricReading.create({
-    data: {
-      targetId,
-      metricId: metric.id,
-      interfaceId,
-      value: input.value,
-      recordedAt,
-    },
+    data: { targetId, metricId: metric.id, interfaceId, value, recordedAt },
   });
 
-  const level = levelOf(input.value, policy.condition, policy.warningThreshold, policy.criticalThreshold);
+  const level = levelOf(value, policy.condition, policy.warningThreshold, policy.criticalThreshold);
   const openAlert = await prisma.alert.findFirst({
     where: { targetId, metricId: metric.id, interfaceId, status: "open" },
   });
@@ -344,7 +311,7 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
       metric: metric.metricKey,
       host: hostName,
       interface: targetInterface?.name ?? null,
-      value: input.value,
+      value,
       unit: metric.unit,
       severity: current,
       threshold: (current === "critical" ? policy.criticalThreshold : policy.warningThreshold) ?? 0,
@@ -362,8 +329,8 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     await prisma.alert.update({
       where: { id: openAlert.id },
       data: level
-        ? { lastValue: input.value, lastValueAt: recordedAt, severity: level, ...message(level) }
-        : { lastValue: input.value, lastValueAt: recordedAt, status: "resolved", resolvedAt: recordedAt },
+        ? { lastValue: value, lastValueAt: recordedAt, severity: level, ...message(level) }
+        : { lastValue: value, lastValueAt: recordedAt, status: "resolved", resolvedAt: recordedAt },
     });
   } else if (level) {
     // consecutive_breaches guards against flapping: the last N readings (this
@@ -386,8 +353,8 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
           targetId,
           metricId: metric.id,
           interfaceId,
-          triggeredValue: input.value,
-          lastValue: input.value,
+          triggeredValue: value,
+          lastValue: value,
           lastValueAt: recordedAt,
           severity: level,
           responsibleTeam: policy.responsibleTeam,
@@ -402,12 +369,80 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
   return reading;
 }
 
+// Stores a host-wide value, or one value per interface for per-device metrics.
+// Returns the stored readings: none when every interface is unmonitored.
+export async function submitReading(targetId: number, input: SubmitReadingInput) {
+  const target = await prisma.target.findUnique({ where: { id: targetId } });
+  if (!target) {
+    throw new HttpError(404, "target not found");
+  }
+
+  const metric = await prisma.metric.findUnique({ where: { metricKey: input.metric_key } });
+  if (!metric) {
+    throw new HttpError(404, "unknown metric_key");
+  }
+  const { deviceKind } = metric;
+  if (deviceKind && !input.devices) {
+    throw new HttpError(422, "metric is measured per device; send devices instead of value");
+  }
+  if (!deviceKind && input.value === undefined) {
+    throw new HttpError(422, "metric is host-wide; send value instead of devices");
+  }
+
+  const templateDefault = await resolveTemplateDefault(targetId, metric.id);
+  if (!templateDefault) {
+    throw new HttpError(422, "metric is not assigned to this target via any template");
+  }
+
+  const override = await prisma.targetMetricOverride.findUnique({
+    where: { targetId_metricId: { targetId, metricId: metric.id } },
+  });
+
+  const recordedAt = input.recorded_at ? new Date(input.recorded_at) : new Date();
+  const context: ReadingContext = {
+    target,
+    metric,
+    policy: resolvePolicy(templateDefault, override, target.responsibleTeam),
+    recordedAt,
+  };
+
+  await prisma.target.update({
+    where: { id: targetId },
+    data: { lastSeenAt: recordedAt, status: "up" },
+  });
+
+  // Both present as checked above (the schema allows exactly one of them).
+  if (!deviceKind) {
+    return [await recordValue(context, null, input.value!)];
+  }
+
+  // Interfaces are independent, so they are recorded concurrently.
+  const readings = await Promise.all(
+    input.devices!.map(async ({ device, value }) => {
+      // Interfaces are created the first time the agent reports them.
+      const targetInterface = await prisma.targetInterface.upsert({
+        where: { targetId_kind_name: { targetId, kind: deviceKind, name: device } },
+        create: { targetId, kind: deviceKind, name: device, lastSeenAt: recordedAt },
+        update: { lastSeenAt: recordedAt },
+      });
+      // Not monitored: the value is dropped, so it is neither stored nor alerted on.
+      return targetInterface.monitored ? recordValue(context, targetInterface, value) : null;
+    })
+  );
+  return readings.filter((reading) => reading !== null);
+}
+
+// Comment left on alerts resolved by turning their interface off.
+const MONITORING_STOPPED_COMMENT = "Monitoring of this interface has been stopped.";
+
 // Turning monitoring off also resolves the interface's open alerts, since no
-// reading will arrive to resolve them.
+// reading will arrive to resolve them. Each gets a resolve comment by author,
+// like a manual resolve.
 export async function setInterfaceMonitored(
   targetId: number,
   interfaceId: number,
-  input: UpdateInterfaceInput
+  input: UpdateInterfaceInput,
+  author: string
 ) {
   const existing = await prisma.targetInterface.findFirst({ where: { id: interfaceId, targetId } });
   if (!existing) {
@@ -416,9 +451,22 @@ export async function setInterfaceMonitored(
 
   return prisma.$transaction(async (tx) => {
     if (!input.monitored) {
-      await tx.alert.updateMany({
+      const openAlerts = await tx.alert.findMany({
         where: { interfaceId, status: "open" },
+        select: { id: true },
+      });
+      const alertIds = openAlerts.map((alert) => alert.id);
+      await tx.alert.updateMany({
+        where: { id: { in: alertIds } },
         data: { status: "resolved", resolvedAt: new Date() },
+      });
+      await tx.alertComment.createMany({
+        data: alertIds.map((alertId) => ({
+          alertId,
+          action: "resolve",
+          body: MONITORING_STOPPED_COMMENT,
+          author,
+        })),
       });
     }
     return tx.targetInterface.update({

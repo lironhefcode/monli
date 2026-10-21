@@ -5,9 +5,9 @@
 //! 2. starts a send of pending readings, unless a send is still in flight;
 //! 3. every `REFRESH`, re-fetches the metric list from the server.
 //!
-//! Only the latest unsent reading per series (metric, plus device for
-//! per-device metrics) is kept, so an outage costs history but never grows
-//! memory.
+//! Only the latest unsent reading per metric is kept (one reading carries
+//! every device of a per-device metric), so an outage costs history but never
+//! grows memory.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -18,17 +18,14 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, info, warn};
 
-use crate::api_client::{ApiClient, ApiError, MetricSpec, Reading};
-use crate::collectors::{DeviceCollector, Registry};
+use crate::api_client::{ApiClient, ApiError, DeviceValue, MetricSpec, Reading, ReadingValues};
+use crate::collectors::{DeviceCollector, Registry, Sample};
 
 const TICK: Duration = Duration::from_secs(5);
 const REFRESH: Duration = Duration::from_secs(60);
 
-/// One series: a `metric_key`, and the device it was measured on (if any).
-type SeriesKey = (String, Option<String>);
-
-/// Latest unsent reading per series, shared with collector and send tasks.
-type Pending = Arc<Mutex<HashMap<SeriesKey, Reading>>>;
+/// Latest unsent reading per `metric_key`, shared with collector and send tasks.
+type Pending = Arc<Mutex<HashMap<String, Reading>>>;
 
 struct MetricState {
     interval: Duration,
@@ -120,20 +117,19 @@ impl Scheduler {
             metric.running = Some(tokio::spawn(async move {
                 match collector.collect().await {
                     Ok(samples) => {
-                        let recorded_at =
-                            humantime::format_rfc3339_millis(SystemTime::now()).to_string();
-                        let mut pending = lock(&pending);
-                        for sample in samples {
-                            debug!(metric_key = %key, device = ?sample.device, value = sample.value, "collected");
-                            let reading = Reading {
-                                metric_key: key.clone(),
-                                device: sample.device,
-                                value: sample.value,
-                                recorded_at: recorded_at.clone(),
-                            };
-                            // Replaces any older unsent reading for this series.
-                            pending.insert(series_key(&reading), reading);
-                        }
+                        let Some(values) = reading_values(samples) else {
+                            debug!(metric_key = %key, "no device had a value yet; nothing sent");
+                            return;
+                        };
+                        debug!(metric_key = %key, values = ?values, "collected");
+                        let reading = Reading {
+                            metric_key: key.clone(),
+                            values,
+                            recorded_at: humantime::format_rfc3339_millis(SystemTime::now())
+                                .to_string(),
+                        };
+                        // Replaces any older unsent reading for this metric.
+                        lock(&pending).insert(key, reading);
                     }
                     Err(e) => {
                         warn!(metric_key = %key, error = %format!("{e:#}"), "collection failed; nothing sent");
@@ -242,37 +238,75 @@ async fn send_batch(
     let mut readings = batch.into_iter();
     while let Some(reading) = readings.next() {
         match client.submit_reading(target_id, api_key, &reading).await {
-            Ok(()) => {
-                debug!(metric_key = %reading.metric_key, device = ?reading.device, "reading sent");
-            }
+            Ok(()) => debug!(metric_key = %reading.metric_key, "reading sent"),
             Err(e) if e.is_retryable() => {
                 warn!(error = %e, "sending readings failed; will retry next tick");
                 // Server unreachable: don't try the rest of the batch now.
                 let mut pending = lock(pending);
                 for r in std::iter::once(reading).chain(readings) {
-                    pending.entry(series_key(&r)).or_insert(r);
+                    pending.entry(r.metric_key.clone()).or_insert(r);
                 }
                 return;
             }
-            Err(e) => warn!(
-                metric_key = %reading.metric_key,
-                device = ?reading.device,
-                error = %e,
-                "server rejected reading; dropped"
-            ),
+            Err(e) => {
+                warn!(metric_key = %reading.metric_key, error = %e, "server rejected reading; dropped");
+            }
         }
     }
 }
 
-fn series_key(reading: &Reading) -> SeriesKey {
-    (reading.metric_key.clone(), reading.device.clone())
+/// Packs a collector's samples into one reading: a single sample without a
+/// device is a host-wide value, anything else one value per device. `None`
+/// when there is nothing to send (no device had a baseline yet).
+fn reading_values(samples: Vec<Sample>) -> Option<ReadingValues> {
+    if let [Sample { device: None, value }] = samples.as_slice() {
+        return Some(ReadingValues::Host { value: *value });
+    }
+    let devices: Vec<DeviceValue> = samples
+        .into_iter()
+        // `?` in a closure returning Option: skips a sample with no device.
+        .filter_map(|sample| Some(DeviceValue { device: sample.device?, value: sample.value }))
+        .collect();
+    (!devices.is_empty()).then_some(ReadingValues::Devices { devices })
 }
 
 fn is_idle<T>(handle: &Option<JoinHandle<T>>) -> bool {
     handle.as_ref().is_none_or(|h| h.is_finished())
 }
 
-fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<SeriesKey, Reading>> {
+fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<String, Reading>> {
     // The map stays valid even if a holder panicked, so recover it.
     pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(device: Option<&str>, value: f64) -> Sample {
+        Sample { device: device.map(str::to_owned), value }
+    }
+
+    #[test]
+    fn host_sample_becomes_a_single_value() {
+        let values = reading_values(vec![sample(None, 3.0)]);
+
+        assert_eq!(values, Some(ReadingValues::Host { value: 3.0 }));
+    }
+
+    #[test]
+    fn device_samples_are_sent_together() {
+        let values = reading_values(vec![sample(Some("sda"), 1.0), sample(Some("sdb"), 2.0)]);
+
+        let expected = vec![
+            DeviceValue { device: "sda".to_owned(), value: 1.0 },
+            DeviceValue { device: "sdb".to_owned(), value: 2.0 },
+        ];
+        assert_eq!(values, Some(ReadingValues::Devices { devices: expected }));
+    }
+
+    #[test]
+    fn no_samples_means_nothing_to_send() {
+        assert_eq!(reading_values(Vec::new()), None);
+    }
 }

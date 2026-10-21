@@ -16,23 +16,28 @@ pub struct InodeUtilization;
 #[async_trait]
 impl DeviceCollector for InodeUtilization {
     async fn collect(&self) -> Result<Vec<Sample>> {
-        let samples: Vec<Sample> = filesystems()
-            .iter()
-            .filter_map(|filesystem| match used_pct(&filesystem.mount_point) {
-                Ok(Some(value)) => Some(Sample { device: Some(filesystem.device_name()), value }),
-                // No fixed inode limit (e.g. btrfs): nothing to measure.
-                Ok(None) => None,
-                Err(e) => {
-                    debug!(mount = %filesystem.mount_point.display(), error = %e, "skipping mount");
-                    None
-                }
-            })
-            .collect();
-        if samples.is_empty() {
-            bail!("no mounted filesystem has a fixed inode limit");
-        }
-        Ok(samples)
+        // statvfs blocks like the mount scan does; see `DiskUsedPct`.
+        tokio::task::spawn_blocking(inode_samples).await?
     }
+}
+
+fn inode_samples() -> Result<Vec<Sample>> {
+    let samples: Vec<Sample> = filesystems()
+        .iter()
+        .filter_map(|filesystem| match used_pct(&filesystem.mount_point) {
+            Ok(Some(value)) => Some(Sample { device: Some(filesystem.device_name()), value }),
+            // No fixed inode limit (e.g. btrfs): nothing to measure.
+            Ok(None) => None,
+            Err(e) => {
+                debug!(mount = %filesystem.mount_point.display(), error = %e, "skipping mount");
+                None
+            }
+        })
+        .collect();
+    if samples.is_empty() {
+        bail!("no mounted filesystem has a fixed inode limit");
+    }
+    Ok(samples)
 }
 
 /// Inodes used at `mount_point` in %, or `None` if it has no fixed limit.

@@ -69,13 +69,29 @@ export const overrideSchema = z.object({
   priority: z.enum(["p1", "p2", "p3", "p4"]),
 });
 
-export const submitReadingSchema = z.object({
-  metric_key: z.string().min(1),
-  // Interface the value was measured on; required exactly for per-device metrics.
-  device: z.string().trim().min(1).max(255).optional(),
+// One interface's value in a per-device reading. 512 fits long container
+// volume mount paths.
+const deviceValueSchema = z.object({
+  device: z.string().trim().min(1).max(512),
   value: z.number(),
-  recorded_at: z.string().datetime().optional(),
 });
+
+// Host-wide metrics send one value; per-device metrics send every interface's
+// value in one reading (which the metric needs is checked against the catalog).
+export const submitReadingSchema = z
+  .object({
+    metric_key: z.string().min(1),
+    value: z.number().optional(),
+    devices: z.array(deviceValueSchema).min(1).optional(),
+    recorded_at: z.string().datetime().optional(),
+  })
+  .refine((body) => (body.value === undefined) !== (body.devices === undefined), {
+    message: "send either value or devices",
+  })
+  .refine((body) => !body.devices || new Set(body.devices.map((d) => d.device)).size === body.devices.length, {
+    message: "each device may appear only once",
+    path: ["devices"],
+  });
 
 export const historyRanges = ["1h", "6h", "24h", "7d"] as const;
 

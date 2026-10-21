@@ -79,6 +79,12 @@ export interface HistoryPoint {
   max: number;
 }
 
+// One line on a metric chart: the host-wide value (label null) or one interface.
+export interface ChartSeries {
+  label: string | null;
+  points: HistoryPoint[];
+}
+
 // GET /targets/:id/history?range=…
 export interface TargetHistory {
   range: HistoryRange;
