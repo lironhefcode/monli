@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import type { HistoryPoint } from "~/types/targets";
+import type { ChartSeries } from "~/types/targets";
 
 const props = defineProps<{
-  points: HistoryPoint[];
+  // One series draws its average with the max band; several (one per
+  // interface) draw an average line each.
+  series: ChartSeries[];
   from: string;
   to: string;
   bucketSec: number;
@@ -14,6 +16,7 @@ const props = defineProps<{
 }>();
 
 const HEIGHT = 180;
+const SERIES_COLORS = 6;
 
 const container = ref<HTMLDivElement>();
 let chart: uPlot | undefined;
@@ -22,22 +25,25 @@ let resizeObserver: ResizeObserver | undefined;
 const fromSec = computed(() => Date.parse(props.from) / 1000);
 const toSec = computed(() => Date.parse(props.to) / 1000);
 
+const withBand = computed(() => props.series.length === 1);
+
 // One slot per bucket across the whole range. Buckets without readings stay
 // null, so the line breaks at an outage instead of bridging it.
 const data = computed<uPlot.AlignedData>(() => {
-  const byTime = new Map(props.points.map((point) => [Date.parse(point.t) / 1000, point]));
-  const xs: number[] = [];
-  const avg: (number | null)[] = [];
-  const max: (number | null)[] = [];
   const first = Math.floor(fromSec.value / props.bucketSec) * props.bucketSec;
-  for (let t = first; t <= toSec.value; t += props.bucketSec) {
-    const point = byTime.get(t);
-    xs.push(t);
-    avg.push(point?.avg ?? null);
-    max.push(point?.max ?? null);
-  }
-  return [xs, avg, max];
+  const xs: number[] = [];
+  for (let t = first; t <= toSec.value; t += props.bucketSec) xs.push(t);
+
+  const columns = props.series.flatMap((series) => {
+    const byTime = new Map(series.points.map((point) => [Date.parse(point.t) / 1000, point]));
+    const avg = xs.map((t) => byTime.get(t)?.avg ?? null);
+    return withBand.value ? [avg, xs.map((t) => byTime.get(t)?.max ?? null)] : [avg];
+  });
+  return [xs, ...columns];
 });
+
+// uPlot fixes its series when created, so a new set of lines means a new chart.
+const seriesLabels = computed(() => props.series.map((series) => series.label).join("\n"));
 
 const thresholds = computed(() =>
   [
@@ -91,29 +97,61 @@ function options(width: number): uPlot.Options {
   const format = (value: number | null) => (value === null ? "—" : formatMetricValue(value, props.unit));
   const axis = { stroke: muted, font, grid: { stroke: rule, width: 1 }, ticks: { stroke: rule, width: 1 } };
 
+  const value = (_u: uPlot, value: number | null) => format(value);
+
+  // Host-wide, or a single interface: the average, shaded up to each bucket's peak.
+  if (withBand.value) {
+    const prefix = props.series[0]?.label ? `${props.series[0].label} ` : "";
+    return {
+      ...base(width, axis, format),
+      series: [
+        {},
+        { label: `${prefix}avg`, stroke: steel, width: 1.5, value },
+        { label: `${prefix}max`, stroke: withAlpha(steel, 0.35), width: 1, value },
+      ],
+      bands: [{ series: [2, 1], fill: withAlpha(steel, 0.15) }],
+    };
+  }
+
+  // One average line per interface, colours cycling through the series palette.
+  return {
+    ...base(width, axis, format),
+    series: [
+      {},
+      ...props.series.map((series, index) => ({
+        label: series.label ?? "",
+        stroke: cssVar(`--color-series-${(index % SERIES_COLORS) + 1}`),
+        width: 1.5,
+        value,
+      })),
+    ],
+  };
+}
+
+// Everything but the series, shared by both layouts.
+function base(width: number, axis: uPlot.Axis, format: (value: number | null) => string) {
   return {
     width,
     height: HEIGHT,
     scales: {
-      x: { time: true, range: () => [fromSec.value, toSec.value] },
+      x: { time: true, range: (): uPlot.Range.MinMax => [fromSec.value, toSec.value] },
       y: { range: yRange },
     },
-    axes: [axis, { ...axis, size: 72, values: (_u, ticks) => ticks.map((tick) => format(tick)) }],
-    series: [
-      {},
-      { label: "avg", stroke: steel, width: 1.5, value: (_u, value) => format(value) },
-      { label: "max", stroke: withAlpha(steel, 0.35), width: 1, value: (_u, value) => format(value) },
-    ],
-    // Shades from the average up to the peak of each bucket.
-    bands: [{ series: [2, 1], fill: withAlpha(steel, 0.15) }],
+    axes: [axis, { ...axis, size: 72, values: (_u: uPlot, ticks: number[]) => ticks.map((tick) => format(tick)) }],
     cursor: { drag: { x: false, y: false } },
     hooks: { draw: [drawThresholds] },
   };
 }
 
+function createChart() {
+  const element = container.value!;
+  chart?.destroy();
+  chart = new uPlot(options(element.clientWidth), data.value, element);
+}
+
 onMounted(() => {
   const element = container.value!;
-  chart = new uPlot(options(element.clientWidth), data.value, element);
+  createChart();
   resizeObserver = new ResizeObserver(() => chart?.setSize({ width: element.clientWidth, height: HEIGHT }));
   resizeObserver.observe(element);
 });
@@ -123,6 +161,8 @@ onBeforeUnmount(() => {
   chart?.destroy();
 });
 
+// Same lines: just new data. Different lines: rebuild (watchers run in order).
+watch(seriesLabels, createChart);
 watch(data, (next) => chart?.setData(next));
 watch(thresholds, () => chart?.redraw());
 </script>

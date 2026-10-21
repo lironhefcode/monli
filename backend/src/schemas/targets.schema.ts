@@ -12,6 +12,14 @@ export const targetMetricParamsSchema = targetIdParamsSchema.extend({
   metricId: z.coerce.number().int().positive(),
 });
 
+export const targetInterfaceParamsSchema = targetIdParamsSchema.extend({
+  interfaceId: z.coerce.number().int().positive(),
+});
+
+export const updateInterfaceSchema = z.object({
+  monitored: z.boolean(),
+});
+
 export const createTargetSchema = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
@@ -61,11 +69,29 @@ export const overrideSchema = z.object({
   priority: z.enum(["p1", "p2", "p3", "p4"]),
 });
 
-export const submitReadingSchema = z.object({
-  metric_key: z.string().min(1),
+// One interface's value in a per-device reading. 512 fits long container
+// volume mount paths.
+const deviceValueSchema = z.object({
+  device: z.string().trim().min(1).max(512),
   value: z.number(),
-  recorded_at: z.string().datetime().optional(),
 });
+
+// Host-wide metrics send one value; per-device metrics send every interface's
+// value in one reading (which the metric needs is checked against the catalog).
+export const submitReadingSchema = z
+  .object({
+    metric_key: z.string().min(1),
+    value: z.number().optional(),
+    devices: z.array(deviceValueSchema).min(1).optional(),
+    recorded_at: z.string().datetime().optional(),
+  })
+  .refine((body) => (body.value === undefined) !== (body.devices === undefined), {
+    message: "send either value or devices",
+  })
+  .refine((body) => !body.devices || new Set(body.devices.map((d) => d.device)).size === body.devices.length, {
+    message: "each device may appear only once",
+    path: ["devices"],
+  });
 
 export const historyRanges = ["1h", "6h", "24h", "7d"] as const;
 
@@ -76,6 +102,8 @@ export const historyQuerySchema = z.object({
 export type TargetIdParams = z.infer<typeof targetIdParamsSchema>;
 export type TargetTemplateParams = z.infer<typeof targetTemplateParamsSchema>;
 export type TargetMetricParams = z.infer<typeof targetMetricParamsSchema>;
+export type TargetInterfaceParams = z.infer<typeof targetInterfaceParamsSchema>;
+export type UpdateInterfaceInput = z.infer<typeof updateInterfaceSchema>;
 export type CreateTargetInput = z.infer<typeof createTargetSchema>;
 export type UpdateTargetInput = z.infer<typeof updateTargetSchema>;
 export type AssignTemplateInput = z.infer<typeof assignTemplateSchema>;

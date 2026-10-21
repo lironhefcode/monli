@@ -10,14 +10,17 @@ import {
   overrideSchema,
   submitReadingSchema,
   targetIdParamsSchema,
+  targetInterfaceParamsSchema,
   targetMetricParamsSchema,
   targetTemplateParamsSchema,
+  updateInterfaceSchema,
   updateTargetSchema,
   type AssignTemplateInput,
   type CreateTargetInput,
   type HistoryQuery,
   type OverrideInput,
   type SubmitReadingInput,
+  type UpdateInterfaceInput,
   type UpdateTargetInput,
 } from "../schemas/targets.schema.js";
 import {
@@ -28,6 +31,7 @@ import {
   getTargetHistory,
   listTargets,
   removeOverride,
+  setInterfaceMonitored,
   setOverride,
   submitReading,
   unassignTemplate,
@@ -128,6 +132,23 @@ targetsRouter.delete(
   })
 );
 
+// PATCH /targets/:id/interfaces/:interfaceId — turn monitoring of one
+// interface (disk, NIC, ...) on or off
+targetsRouter.patch(
+  "/:id/interfaces/:interfaceId",
+  requirePermission("edit"),
+  validate({ params: targetInterfaceParamsSchema, body: updateInterfaceSchema }),
+  asyncHandler(async (req: Request<Record<string, string>, unknown, UpdateInterfaceInput>, res: Response) => {
+    const targetInterface = await setInterfaceMonitored(
+      Number(req.params.id),
+      Number(req.params.interfaceId),
+      req.body,
+      req.user!.name
+    );
+    res.json(targetInterface);
+  })
+);
+
 // GET /targets/:id/metrics — agent-facing: effective flat metric list
 targetsRouter.get(
   "/:id/metrics",
@@ -140,15 +161,21 @@ targetsRouter.get(
   })
 );
 
-// POST /targets/:id/metrics — agent-facing: submit a reading
+// POST /targets/:id/metrics — agent-facing: submit a reading (one value, or
+// one per interface). 202 with no body when nothing was stored because no
+// reported interface is monitored.
 targetsRouter.post(
   "/:id/metrics",
   validate({ params: targetIdParamsSchema, body: submitReadingSchema }),
   apiKeyAuth,
   asyncHandler(async (req: Request<Record<string, string>, unknown, SubmitReadingInput>, res: Response) => {
     const targetId = Number(req.params.id);
-    const reading = await submitReading(targetId, req.body);
-    res.status(201).json({ ...reading, id: reading.id.toString() });
+    const readings = await submitReading(targetId, req.body);
+    if (readings.length === 0) {
+      res.status(202).end();
+      return;
+    }
+    res.status(201).json(readings.map((reading) => ({ ...reading, id: reading.id.toString() })));
   })
 );
 

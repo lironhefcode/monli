@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { TemplateMetricInput } from "~/types/monitoring";
 import type {
+  ChartSeries,
   HistoryRange,
   TargetDetail,
   TargetHistory,
+  TargetInterface,
   TargetMetric,
   TargetUpdateInput,
   TemplateSummary,
@@ -54,8 +56,30 @@ watch([tab, range, targetId], loadHistory, { immediate: true });
 // Agents report about once a minute, so polling faster adds nothing.
 usePolling(loadHistory, 60_000);
 
-const pointsByMetric = computed(
-  () => new Map(history.value?.metrics.map((metric) => [metric.metricId, metric.points]))
+function seriesKey(metricId: number, interfaceId: number | null) {
+  return `${metricId}:${interfaceId ?? "host"}`;
+}
+
+const pointsBySeries = computed(
+  () => new Map(history.value?.metrics.map((series) => [seriesKey(series.metricId, series.interfaceId), series.points]))
+);
+
+// One chart per metric. Per-device metrics get a line per monitored interface
+// of their kind that has readings in the range.
+const charts = computed(() =>
+  (target.value?.metrics ?? []).map((metric) => {
+    const kind = metric.metric.deviceKind;
+    const sources: { label: string | null; interfaceId: number | null }[] = kind
+      ? (target.value?.interfaces ?? [])
+          .filter((item) => item.kind === kind && item.monitored)
+          .map((item) => ({ label: item.name, interfaceId: item.id }))
+      : [{ label: null, interfaceId: null }];
+    const series: ChartSeries[] = sources.flatMap(({ label, interfaceId }) => {
+      const points = pointsBySeries.value.get(seriesKey(metric.metric.id, interfaceId));
+      return points?.length ? [{ label, points }] : [];
+    });
+    return { metric, series };
+  })
 );
 
 const toast = useToast();
@@ -151,6 +175,34 @@ function resetMetric() {
   return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
 }
 
+const interfaceKinds: Record<TargetInterface["kind"], string> = {
+  filesystem: "Filesystem",
+  disk: "Disk",
+  network: "Network",
+};
+
+// Same window as the backend's TARGET_DOWN_AFTER_MS for whole resources.
+const INTERFACE_STALE_AFTER_MS = 3 * 60 * 1000;
+
+function isStale(item: TargetInterface) {
+  return Date.now() - new Date(item.lastSeenAt).getTime() > INTERFACE_STALE_AFTER_MS;
+}
+
+const togglingInterfaceId = ref<number | null>(null);
+
+// Turning monitoring off also resolves the interface's open alerts (server side).
+async function setMonitored(item: TargetInterface, monitored: boolean) {
+  togglingInterfaceId.value = item.id;
+  try {
+    await $fetch(`/api/targets/${targetId.value}/interfaces/${item.id}`, { method: "PATCH", body: { monitored } });
+    await refresh();
+  } catch (err) {
+    toast.add({ title: "Couldn't change monitoring", description: apiErrorMessage(err), color: "error" });
+  } finally {
+    togglingInterfaceId.value = null;
+  }
+}
+
 // "linux, x86_64"; shown after the distro when the agent reports one.
 const osAndArch = computed(() => [target.value?.os, target.value?.arch].filter(Boolean).join(", "));
 
@@ -207,7 +259,7 @@ function formatDate(value: string | null) {
 
       <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
 
-      <div v-if="tab === 'details'" class="mt-6">
+      <div v-if="tab === 'details'" class="mt-6 space-y-6">
         <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
           <div class="flex items-center justify-between border-b border-default px-4 py-2">
             <h2 id="details-title" class="text-base font-semibold text-highlighted">Details</h2>
@@ -257,6 +309,50 @@ function formatDate(value: string | null) {
               <dd class="text-highlighted">{{ target.description }}</dd>
             </div>
           </dl>
+        </section>
+
+        <section aria-labelledby="interfaces-title" class="rounded-(--ui-radius) border border-default bg-muted">
+          <header class="border-b border-default px-4 py-3">
+            <h2 id="interfaces-title" class="text-base font-semibold text-highlighted">Interfaces</h2>
+            <p class="text-muted">
+              Disks and network interfaces the agent reports. Each one alerts on its own; turn one off to ignore it.
+            </p>
+          </header>
+
+          <p v-if="target.interfaces.length === 0" class="px-4 py-3 text-muted">
+            None reported yet. They appear once a disk or network metric is assigned and the agent reports it.
+          </p>
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="border-b border-default text-muted">
+                <tr>
+                  <th scope="col" class="py-2 pl-4 pr-4 font-medium">Interface</th>
+                  <th scope="col" class="px-4 py-2 font-medium">Kind</th>
+                  <th scope="col" class="px-4 py-2 font-medium">Last seen</th>
+                  <th scope="col" class="px-4 py-2 font-medium">Monitored</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in target.interfaces" :key="item.id" class="border-b border-default last:border-b-0">
+                  <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ item.name }}</td>
+                  <td class="px-4 py-2.5 text-toned">{{ interfaceKinds[item.kind] }}</td>
+                  <td class="px-4 py-2.5">
+                    <span :title="formatDate(item.lastSeenAt)">{{ formatAgo(item.lastSeenAt) }}</span>
+                    <span v-if="isStale(item)" class="block text-muted">Not reporting</span>
+                  </td>
+                  <td class="px-4 py-2.5">
+                    <USwitch
+                      :model-value="item.monitored"
+                      :disabled="!canEdit || togglingInterfaceId === item.id"
+                      :aria-label="`Monitor ${item.name}`"
+                      @update:model-value="setMonitored(item, $event)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
 
@@ -360,17 +456,21 @@ function formatDate(value: string | null) {
           <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
 
           <div v-else class="grid gap-px bg-(--ui-border) lg:grid-cols-2">
-            <figure v-for="metric in target.metrics" :key="metric.metric.id" class="bg-muted px-4 py-3 lg:last:odd:col-span-2">
-              <figcaption class="mb-2 font-mono text-highlighted">{{ metric.metric.metricKey }}</figcaption>
+            <figure
+              v-for="chart in charts"
+              :key="chart.metric.metric.id"
+              class="bg-muted px-4 py-3 lg:last:odd:col-span-2"
+            >
+              <figcaption class="mb-2 font-mono text-highlighted">{{ chart.metric.metric.metricKey }}</figcaption>
               <MetricChart
-                v-if="pointsByMetric.get(metric.metric.id)?.length"
-                :points="pointsByMetric.get(metric.metric.id)!"
+                v-if="chart.series.length"
+                :series="chart.series"
                 :from="history.from"
                 :to="history.to"
                 :bucket-sec="history.bucketSec"
-                :unit="metric.metric.unit"
-                :warning-threshold="metric.warningThreshold"
-                :critical-threshold="metric.criticalThreshold"
+                :unit="chart.metric.metric.unit"
+                :warning-threshold="chart.metric.warningThreshold"
+                :critical-threshold="chart.metric.criticalThreshold"
               />
               <p v-else class="flex h-[180px] items-center justify-center text-muted">No readings in this range.</p>
             </figure>

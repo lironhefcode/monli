@@ -1,6 +1,8 @@
 export type Condition = "gt" | "lt" | "gte" | "lte" | "eq";
 export type Severity = "warning" | "critical";
 export type Priority = "p1" | "p2" | "p3" | "p4";
+// What a per-device metric is measured on; null marks a host-wide metric.
+export type DeviceKind = "filesystem" | "disk" | "network";
 
 // Item from GET /metrics.
 export interface CatalogMetric {
@@ -14,6 +16,7 @@ export interface CatalogMetric {
   defaultPriority: Priority | null;
   defaultReportIntervalSec: number | null;
   defaultAlertSubject: string | null;
+  deviceKind: DeviceKind | null;
 }
 
 // Body of PATCH /metrics/:id; null clears a threshold or the subject.
@@ -38,7 +41,7 @@ export interface TemplateMetric {
   alertSubject: string;
   alertDescription: string | null;
   priority: Priority;
-  metric: { id: number; metricKey: string; unit: string | null };
+  metric: { id: number; metricKey: string; unit: string | null; deviceKind: DeviceKind | null };
 }
 
 // GET /templates/:id.

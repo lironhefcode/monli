@@ -22,7 +22,7 @@ export async function getTemplateDetail(templateId: number) {
     where: { id: templateId },
     include: {
       templateMetrics: {
-        include: { metric: { select: { id: true, metricKey: true, unit: true } } },
+        include: { metric: { select: { id: true, metricKey: true, unit: true, deviceKind: true } } },
         orderBy: { id: "asc" },
       },
       _count: { select: { targetTemplates: true } },

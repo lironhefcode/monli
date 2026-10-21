@@ -77,7 +77,7 @@ function submit() {
       <USelect v-model="form.priority" :items="priorityOptions" :disabled="monitorOnly" class="w-full sm:w-1/3" />
     </UFormField>
     <UFormField label="Alert subject">
-      <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject" :disabled="monitorOnly" class="w-full" />
+      <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject(metric.deviceKind)" :disabled="monitorOnly" class="w-full" />
     </UFormField>
 
     <p class="text-muted">Changes apply to templates that add this metric from now on. Templates already using it keep their settings.</p>

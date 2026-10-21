@@ -19,6 +19,14 @@
   --color-rule: #343c4a;
   --color-steel: #5b9bd5;
 
+  /* One line per interface on a shared chart; kept clear of the status hues. */
+  --color-series-1: var(--color-steel);
+  --color-series-2: #4fb8ac;
+  --color-series-3: #d982b5;
+  --color-series-4: #c9b98b;
+  --color-series-5: #9fc8ea;
+  --color-series-6: #b0b8c8;
+
   --color-status-ok: #3fa66b;
   --color-status-warn: #e0a43a;
   --color-status-crit: #e5534b;

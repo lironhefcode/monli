@@ -1,3 +1,5 @@
+import type { DeviceKind } from "~/types/monitoring";
+
 const conditionSymbols = {
   gt: ">",
   gte: "≥",
@@ -58,9 +60,12 @@ export function toThreshold(value: number | ""): number | null {
   return value === "" || !Number.isFinite(value) ? null : value;
 }
 
-// Mirrors DEFAULT_ALERT_SUBJECT in backend/src/utils/alert-levels.ts.
-export const defaultAlertSubject =
-  "{{metric}} on {{host}} is {{value}}{{unit}} ({{severity}} threshold {{threshold}}{{unit}})";
+// Mirrors DEFAULT_ALERT_SUBJECT and DEFAULT_INTERFACE_ALERT_SUBJECT in
+// backend/src/utils/alert-levels.ts.
+export function defaultAlertSubject(deviceKind: DeviceKind | null) {
+  const name = deviceKind ? " {{interface}}" : "";
+  return `{{metric}} on {{host}}${name} is {{value}}{{unit}} ({{severity}} threshold {{threshold}}{{unit}})`;
+}
 
 export function apiErrorMessage(err: unknown, fallback = "Could not reach the server") {
   // The backend's error handler responds with { error: string }.

@@ -17,10 +17,16 @@ const emit = defineEmits<{
 
 const isEdit = computed(() => props.initial !== undefined);
 
-// Threshold inputs hold "" while empty; whether a level is used is levelOn.
-type FormState = Omit<TemplateMetricInput, "warning_threshold" | "critical_threshold"> & {
+// Inputs hold "" while empty (submit turns blank text back into null); whether
+// a level is used is levelOn.
+type FormState = Omit<
+  TemplateMetricInput,
+  "warning_threshold" | "critical_threshold" | "responsible_team" | "alert_description"
+> & {
   warning_threshold: number | "";
   critical_threshold: number | "";
+  responsible_team: string;
+  alert_description: string;
 };
 
 // API defaults, used where the catalog suggests nothing.
@@ -30,9 +36,9 @@ const fallback: FormState = {
   warning_threshold: "",
   critical_threshold: "",
   consecutive_breaches: 1,
-  responsible_team: null,
+  responsible_team: "",
   alert_subject: "",
-  alert_description: null,
+  alert_description: "",
   priority: "p3",
 };
 
@@ -43,9 +49,9 @@ function fromTemplateMetric(metric: TemplateMetric): FormState {
     warning_threshold: metric.warningThreshold ?? "",
     critical_threshold: metric.criticalThreshold ?? "",
     consecutive_breaches: metric.consecutiveBreaches,
-    responsible_team: metric.responsibleTeam,
+    responsible_team: metric.responsibleTeam ?? "",
     alert_subject: metric.alertSubject,
-    alert_description: metric.alertDescription,
+    alert_description: metric.alertDescription ?? "",
     priority: metric.priority,
   };
 }
@@ -78,6 +84,7 @@ const metricOptions = computed(() =>
 
 const selectedMetric = computed(() => props.availableMetrics?.find((metric) => metric.id === metricId.value));
 const unit = computed(() => (props.initial?.metric ?? selectedMetric.value)?.unit ?? null);
+const deviceKind = computed(() => (props.initial?.metric ?? selectedMetric.value)?.deviceKind ?? null);
 
 // Picking a metric replaces the fields with its suggested defaults.
 watch(selectedMetric, (metric) => {
@@ -119,9 +126,9 @@ function submit() {
     ...form,
     warning_threshold: warning.value,
     critical_threshold: critical.value,
-    responsible_team: form.responsible_team?.trim() || null,
+    responsible_team: form.responsible_team.trim() || null,
     alert_subject: form.alert_subject.trim(),
-    alert_description: form.alert_description?.trim() || null,
+    alert_description: form.alert_description.trim() || null,
   });
 }
 </script>
@@ -168,7 +175,7 @@ function submit() {
       </div>
 
       <UFormField label="Alert subject">
-        <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject" :disabled="monitorOnly" class="w-full" />
+        <UInput v-model="form.alert_subject" :placeholder="defaultAlertSubject(deviceKind)" :disabled="monitorOnly" class="w-full" />
       </UFormField>
       <UFormField label="Alert description">
         <UTextarea v-model="form.alert_description" :rows="2" :disabled="monitorOnly" class="w-full" />
