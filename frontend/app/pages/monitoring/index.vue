@@ -76,7 +76,7 @@ async function saveDefaults(input: MetricDefaultsInput) {
 </script>
 
 <template>
-  <div class="max-w-5xl">
+  <div>
     <header class="border-b border-default pb-4">
       <h1 class="text-xl font-semibold text-highlighted">Monitoring</h1>
       <p class="mt-1 text-muted">What Monli measures, and the templates that apply it to resources.</p>

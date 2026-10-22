@@ -76,7 +76,7 @@ const resourcesLabel = computed(() => {
 </script>
 
 <template>
-  <div class="max-w-5xl">
+  <div>
     <NuxtLink to="/monitoring?tab=templates" class="text-muted hover:text-highlighted">Templates</NuxtLink>
 
     <div v-if="notFound" class="mt-4 rounded-(--ui-radius) border border-default bg-muted px-4 py-6">
