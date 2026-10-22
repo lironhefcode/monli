@@ -212,7 +212,7 @@ function formatDate(value: string | null) {
 </script>
 
 <template>
-  <div class="max-w-5xl">
+  <div>
     <NuxtLink to="/resources" class="text-muted hover:text-highlighted">Resources</NuxtLink>
 
     <div v-if="notFound" class="mt-4 rounded-(--ui-radius) border border-default bg-muted px-4 py-6">
@@ -455,11 +455,11 @@ function formatDate(value: string | null) {
           <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">Assign a template to see graphs.</p>
           <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
 
-          <div v-else class="grid gap-px bg-(--ui-border) lg:grid-cols-2">
+          <div v-else class="grid gap-4 p-4 lg:grid-cols-2">
             <figure
               v-for="chart in charts"
               :key="chart.metric.metric.id"
-              class="bg-muted px-4 py-3 lg:last:odd:col-span-2"
+              class="rounded-(--ui-radius) border border-default bg-default px-4 py-3 lg:last:odd:col-span-2"
             >
               <figcaption class="mb-2 font-mono text-highlighted">{{ chart.metric.metric.metricKey }}</figcaption>
               <MetricChart

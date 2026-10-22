@@ -110,7 +110,7 @@ async function removeUser() {
 </script>
 
 <template>
-  <div class="max-w-4xl">
+  <div>
     <header class="flex flex-wrap items-end justify-between gap-4 border-b border-default pb-4">
       <div>
         <NuxtLink to="/setup" class="text-muted hover:text-highlighted">Setup</NuxtLink>

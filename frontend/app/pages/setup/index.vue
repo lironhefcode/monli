@@ -1,11 +1,11 @@
 <template>
-  <div class="max-w-3xl">
+  <div>
     <header class="border-b border-default pb-4">
       <h1 class="text-xl font-semibold text-highlighted">Setup</h1>
       <p class="mt-1 text-muted">Connect hosts and manage who can sign in.</p>
     </header>
 
-    <div class="mt-6 space-y-6">
+    <div class="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
       <AddAgentPanel />
 
       <section aria-labelledby="users-title" class="rounded-(--ui-radius) border border-default bg-muted">
