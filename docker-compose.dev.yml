@@ -1,0 +1,26 @@
+# Fast dev loop, layered over docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# See README "Fast dev loop (Docker)".
+services:
+  api:
+    build:
+      target: dev
+      args:
+        AGENT_PROFILE: fast
+    environment:
+      # Windows-host bind mounts don't deliver file events into the Linux VM.
+      CHOKIDAR_USEPOLLING: "true"
+      # The UI runs on the host's nuxt dev server, a different origin than :8080.
+      AUTH_TRUSTED_ORIGINS: http://localhost:3001
+    volumes:
+      # Only src/ and prisma/: mounting all of backend/ would hide the
+      # image's agent-dist/ and node_modules.
+      - ./backend/src:/app/backend/src
+      - ./backend/prisma:/app/backend/prisma
+
+  # Proxy only: the UI runs on the host with `nuxt dev`, so no frontend build.
+  nginx:
+    build: !reset null
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro

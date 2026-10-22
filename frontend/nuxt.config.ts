@@ -22,8 +22,12 @@ export default defineNuxtConfig({
 
   nitro: {
     // Dev only: mirrors nginx, which strips /api before forwarding to Express.
+    // API_PROXY_TARGET=http://localhost:8080/api goes through the dev compose's nginx.
     devProxy: {
-      "/api": { target: "http://localhost:3000", changeOrigin: true },
+      "/api": {
+        target: process.env.API_PROXY_TARGET ?? "http://localhost:3000",
+        changeOrigin: true,
+      },
     },
   },
 });

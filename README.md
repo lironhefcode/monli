@@ -60,6 +60,52 @@ npm run dev --workspace backend # http://localhost:3000
 npm run dev --workspace frontend # http://localhost:3001, proxies /api to :3000
 ```
 
+## Fast dev loop (Docker)
+
+```
+npm run dev        # builds/starts postgres + api + nginx, then the UI on :3001
+npm run dev:logs   # follow the API's logs (second terminal)
+npm run dev:down   # stop the Docker stack
+```
+
+Ctrl+C stops only the UI; the Docker stack keeps running until `dev:down`.
+
+```mermaid
+flowchart LR
+    subgraph host["Your machine"]
+        browser["Browser<br/>localhost:3001"]
+        nuxt["nuxt dev :3001<br/>(npm run dev:docker)"]
+        fe["frontend/ edits"]
+        be["backend/src, backend/prisma edits"]
+        ag["agent/src edits"]
+        agents["Agents<br/>(test hosts)"]
+    end
+
+    subgraph docker["Docker (docker-compose.yml + docker-compose.dev.yml)"]
+        nginx["nginx :8080<br/>proxies /api only"]
+        api["api :3000<br/>tsx watch + agent-dist/"]
+        pg[("postgres :5432")]
+    end
+
+    browser -->|"pages + HMR"| nuxt
+    nuxt -->|"/api/* (.env.docker)"| nginx
+    agents -->|"/api/*"| nginx
+    nginx -->|"strips /api"| api
+    api --> pg
+
+    fe -.->|"hot reload, instant"| nuxt
+    be -.->|"bind mount, tsx restarts"| api
+    ag -.->|"npm run dev:stack<br/>cargo --profile fast, seconds"| api
+```
+
+- Backend edits under `backend/src` reload automatically (`tsx watch`), with no rebuild.
+- Frontend edits hot-reload in the browser.
+- Agent edits: rerun `npm run dev` (or just `npm run dev:stack`). Dev builds the agents
+  with the `fast` cargo profile (no LTO), so this takes seconds instead of minutes.
+- Prisma schema edits: rerun `npm run dev:stack`; the API regenerates the client and
+  applies migrations on start.
+- In dev, `:8080` serves only `/api` (agents still go through nginx); the UI is on `:3001`.
+
 ## Why nginx is in front of the API
 
 Agents don't get a name typed in by an admin — a host's identity is its
