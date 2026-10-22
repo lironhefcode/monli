@@ -4,6 +4,12 @@
   "description": "Self-hosted metric monitoring system",
   "private": true,
   "license": "ISC",
+  "scripts": {
+    "dev": "npm run dev:stack && npm run dev:docker --workspace frontend",
+    "dev:stack": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build",
+    "dev:logs": "docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api",
+    "dev:down": "docker compose -f docker-compose.yml -f docker-compose.dev.yml down"
+  },
   "workspaces": [
     "backend",
     "frontend"

@@ -54,3 +54,13 @@ embed-manifest = "1.5"
 strip = true
 lto = true
 codegen-units = 1
+
+# Local Docker iteration (docker-compose.dev.yml): release optimisations without
+# whole-program LTO, with parallel codegen and incremental builds, so a source
+# change relinks in seconds. Inheriting from release keeps build.rs embedding
+# the Windows manifest (Cargo sets PROFILE=release for it).
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
