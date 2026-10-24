@@ -2,11 +2,13 @@ import { createAccessControl } from "better-auth/plugins/access";
 import { defaultStatements } from "better-auth/plugins/admin/access";
 
 // "monli: edit" covers every action in the app (ack, resolve, editing
-// templates, resources and metrics, minting enrollment tokens). The user and
-// session statements are Better Auth's own, used by its admin endpoints.
+// templates, resources and metrics, minting enrollment tokens). "monli:
+// webhooks" manages alert webhooks, admin-only since their URLs carry secrets.
+// The user and session statements are Better Auth's own, used by its admin
+// endpoints.
 const statement = {
   ...defaultStatements,
-  monli: ["edit"],
+  monli: ["edit", "webhooks"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -20,7 +22,7 @@ export const editor = ac.newRole({
 });
 
 export const admin = ac.newRole({
-  monli: ["edit"],
+  monli: ["edit", "webhooks"],
   user: ["create", "list", "set-role", "delete", "set-password", "get", "update"],
   session: ["list", "revoke", "delete"],
 });
