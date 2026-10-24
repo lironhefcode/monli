@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { Alert, AlertAction } from "~/types/alerts";
 
-const props = defineProps<{ alert: Alert; now: number }>();
+// checking: a "check now" for this alert's metric is waiting for its reading.
+const props = defineProps<{ alert: Alert; now: number; checking: boolean }>();
 const emit = defineEmits<{
   action: [alert: Alert, action: AlertAction];
+  check: [alert: Alert];
   open: [alert: Alert];
 }>();
 
@@ -66,6 +68,14 @@ const valueTitle = computed(() => {
     </td>
     <td class="whitespace-nowrap px-4 py-2.5" @click.stop>
       <span class="inline-flex gap-1">
+        <ActionButton
+          label="Check"
+          size="xs"
+          color="neutral"
+          variant="outline"
+          :loading="checking"
+          @click="emit('check', alert)"
+        />
         <ActionButton
           :label="alert.acknowledged ? 'Unack' : 'Ack'"
           size="xs"

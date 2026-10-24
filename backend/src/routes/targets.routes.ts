@@ -30,13 +30,16 @@ import {
   getTargetDetail,
   getTargetHistory,
   listTargets,
+  pollAgent,
   removeOverride,
+  requestMetricCheck,
   setInterfaceMonitored,
   setOverride,
   submitReading,
   unassignTemplate,
   updateTarget,
 } from "../services/targets.service.js";
+import { listChecks } from "../services/metric-checks.service.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 export const targetsRouter = Router();
@@ -149,7 +152,39 @@ targetsRouter.patch(
   })
 );
 
-// GET /targets/:id/metrics — agent-facing: effective flat metric list
+// POST /targets/:id/metrics/:metricId/check — ask the agent for a fresh
+// reading on its next poll, instead of waiting for the metric's interval
+targetsRouter.post(
+  "/:id/metrics/:metricId/check",
+  requirePermission("edit"),
+  validate({ params: targetMetricParamsSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.status(202).json(await requestMetricCheck(Number(req.params.id), Number(req.params.metricId)));
+  })
+);
+
+// GET /targets/:id/checks — recent checks, with their values once the reading is in
+targetsRouter.get(
+  "/:id/checks",
+  requireUser,
+  validate({ params: targetIdParamsSchema }),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(listChecks(Number(req.params.id)));
+  })
+);
+
+// GET /targets/:id/poll — agent-facing: metric list plus metrics to collect now
+targetsRouter.get(
+  "/:id/poll",
+  validate({ params: targetIdParamsSchema }),
+  apiKeyAuth,
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await pollAgent(Number(req.params.id)));
+  })
+);
+
+// GET /targets/:id/metrics — agent-facing: effective flat metric list (agents
+// that predate /poll)
 targetsRouter.get(
   "/:id/metrics",
   validate({ params: targetIdParamsSchema }),

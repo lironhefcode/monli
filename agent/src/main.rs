@@ -127,11 +127,12 @@ async fn run_agent(credentials: &Path, shutdown: impl Future<Output = ()>) -> Re
     let creds = config::load(credentials)?;
     let client = ApiClient::new(&creds.server_url).context("building HTTP client")?;
     // Retries until the server answers (e.g. it's down at boot), so a stop
-    // has to be able to cut it short.
+    // has to be able to cut it short. Check requests are moot here: every
+    // metric runs on the first tick anyway.
     let metrics = tokio::select! {
-        metrics = with_retry("fetching metric list", || {
-            client.get_metrics(creds.target_id, &creds.api_key)
-        }) => metrics.context("fetching metric list")?,
+        poll = with_retry("fetching metric list", || {
+            client.poll(creds.target_id, &creds.api_key)
+        }) => poll.context("fetching metric list")?.metrics,
         () = &mut shutdown => {
             info!("shutting down");
             return Ok(());
