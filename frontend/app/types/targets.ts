@@ -57,6 +57,26 @@ export interface TargetDetail extends TargetSummary {
   interfaces: TargetInterface[];
 }
 
+// One value a "check now" brought back: one for a host-wide metric, one per
+// monitored interface otherwise.
+export interface CheckResult {
+  // null for a host-wide metric.
+  interfaceName: string | null;
+  value: number;
+  // The alert level the value reads at; null when within thresholds.
+  level: "warning" | "critical" | null;
+}
+
+// Item from GET /targets/:id/checks: a recent "check now".
+export interface MetricCheck {
+  metricId: number;
+  requestedAt: string;
+  // Set once the agent has picked the check up on its poll.
+  deliveredAt: string | null;
+  // Set once the reading arrived.
+  result: CheckResult[] | null;
+}
+
 // Body for PATCH /targets/:id; null clears a field.
 export interface TargetUpdateInput {
   alias: string | null;

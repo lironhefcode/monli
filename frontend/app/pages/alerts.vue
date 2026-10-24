@@ -98,6 +98,16 @@ async function submitAction(note: string | null) {
   }
 }
 
+const { check, isChecking, showResult } = useMetricCheck();
+
+// Asks for a fresh reading now; a healthy one resolves the alert.
+function checkAlert(alert: Alert) {
+  check(alert.target.id, alert.metric.id, (result) => {
+    showResult(alert.metric.metricKey, alert.metric.unit, result);
+    refresh();
+  });
+}
+
 // Ticks the relative "opened" times along with each poll.
 const now = ref(Date.now());
 
@@ -178,7 +188,9 @@ usePolling(() => {
               :key="alert.id"
               :alert="alert"
               :now="now"
+              :checking="isChecking(alert.target.id, alert.metric.id)"
               @action="startAction"
+              @check="checkAlert"
               @open="viewing = $event"
             />
           </tbody>

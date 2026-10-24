@@ -170,6 +170,16 @@ function customizeMetric(input: TemplateMetricInput) {
   );
 }
 
+const { check, isChecking, showResult } = useMetricCheck();
+
+function checkMetric(metric: TargetMetric) {
+  check(targetId.value, metric.metric.id, (result) => {
+    showResult(metric.metric.metricKey, metric.metric.unit, result);
+    refresh();
+    loadHistory();
+  });
+}
+
 function resetMetric() {
   const metricId = editingMetric.value?.metric.id;
   return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
@@ -433,7 +443,17 @@ function formatDate(value: string | null) {
                     <span v-if="metric.overridden" class="text-muted">(customized)</span>
                   </td>
                   <td class="px-4 py-2.5 text-right">
-                    <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+                    <span class="inline-flex gap-1">
+                      <ActionButton
+                        label="Check now"
+                        color="neutral"
+                        variant="outline"
+                        size="sm"
+                        :loading="isChecking(targetId, metric.metric.id)"
+                        @click="checkMetric(metric)"
+                      />
+                      <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+                    </span>
                   </td>
                 </tr>
               </tbody>

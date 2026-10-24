@@ -19,6 +19,7 @@ import {
 } from "../utils/alert-levels.js";
 import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { HttpError } from "../utils/http-error.js";
+import { addCheck, completeCheck, takeUndelivered } from "./metric-checks.service.js";
 
 async function resolveTemplateDefault(
   targetId: number,
@@ -238,7 +239,9 @@ export async function removeOverride(targetId: number, metricId: number) {
   }
 }
 
-export async function getEffectiveMetrics(targetId: number) {
+// The target's metrics with their effective intervals, keeping metricId so
+// callers can match check requests to keys.
+async function effectiveMetrics(targetId: number) {
   const target = await prisma.target.findUnique({ where: { id: targetId } });
   if (!target) {
     throw new HttpError(404, "target not found");
@@ -265,10 +268,43 @@ export async function getEffectiveMetrics(targetId: number) {
   return [...byMetricId.values()].map((templateMetric) => {
     const override = overrideByMetricId.get(templateMetric.metricId);
     return {
+      metricId: templateMetric.metricId,
       metric_key: templateMetric.metric.metricKey,
       report_interval_sec: (override ?? templateMetric).reportIntervalSec,
     };
   });
+}
+
+// Agent-facing metric list. Kept for agents that predate pollAgent.
+export async function getEffectiveMetrics(targetId: number) {
+  const metrics = await effectiveMetrics(targetId);
+  return metrics.map(({ metric_key, report_interval_sec }) => ({ metric_key, report_interval_sec }));
+}
+
+// Agent-facing poll: the metric list plus the metrics to collect right away.
+// Handing out a check marks it delivered, so each is sent once.
+export async function pollAgent(targetId: number) {
+  const metrics = await effectiveMetrics(targetId);
+  const requested = new Set(takeUndelivered(targetId));
+  return {
+    metrics: metrics.map(({ metric_key, report_interval_sec }) => ({ metric_key, report_interval_sec })),
+    check_now: metrics.filter(({ metricId }) => requested.has(metricId)).map(({ metric_key }) => metric_key),
+  };
+}
+
+// Asks the agent for a fresh reading of one metric on its next poll.
+export async function requestMetricCheck(targetId: number, metricId: number) {
+  const target = await prisma.target.findUnique({ where: { id: targetId } });
+  if (!target) {
+    throw new HttpError(404, "target not found");
+  }
+  if (!(await resolveTemplateDefault(targetId, metricId))) {
+    throw new HttpError(422, "metric is not assigned to this target via any template");
+  }
+  if (target.status !== "up") {
+    throw new HttpError(409, "resource is offline; its agent can't take the check");
+  }
+  return addCheck(targetId, metricId);
 }
 
 type Policy = ReturnType<typeof resolvePolicy>;
@@ -411,9 +447,34 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     data: { lastSeenAt: recordedAt, status: "up" },
   });
 
+  const recorded = await recordReadingValues(context, deviceKind, input);
+  // A requested check is done once its reading is recorded and alerts
+  // evaluated; the UI shows its values with the level each reads at.
+  const { policy } = context;
+  completeCheck(
+    targetId,
+    metric.id,
+    recorded.map(({ reading, interfaceName }) => ({
+      interfaceName,
+      value: reading.value,
+      level: levelOf(reading.value, policy.condition, policy.warningThreshold, policy.criticalThreshold),
+    }))
+  );
+  return recorded.map(({ reading }) => reading);
+}
+
+// Each stored reading with its interface's name (null for host-wide metrics).
+async function recordReadingValues(
+  context: ReadingContext,
+  deviceKind: string | null,
+  input: SubmitReadingInput
+) {
+  const targetId = context.target.id;
+  const { recordedAt } = context;
+
   // Both present as checked above (the schema allows exactly one of them).
   if (!deviceKind) {
-    return [await recordValue(context, null, input.value!)];
+    return [{ reading: await recordValue(context, null, input.value!), interfaceName: null }];
   }
 
   // Interfaces are independent, so they are recorded concurrently.
@@ -426,10 +487,11 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
         update: { lastSeenAt: recordedAt },
       });
       // Not monitored: the value is dropped, so it is neither stored nor alerted on.
-      return targetInterface.monitored ? recordValue(context, targetInterface, value) : null;
+      if (!targetInterface.monitored) return null;
+      return { reading: await recordValue(context, targetInterface, value), interfaceName: targetInterface.name };
     })
   );
-  return readings.filter((reading) => reading !== null);
+  return readings.filter((recorded) => recorded !== null);
 }
 
 // Comment left on alerts resolved by turning their interface off.

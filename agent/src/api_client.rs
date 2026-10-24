@@ -44,6 +44,16 @@ pub struct MetricSpec {
     pub report_interval_sec: u64,
 }
 
+/// Body of `GET /targets/:id/poll`: the assigned metrics, plus the ones a
+/// user asked to collect right away instead of waiting for their interval.
+#[derive(Debug, Deserialize)]
+pub struct AgentPoll {
+    pub metrics: Vec<MetricSpec>,
+    /// `default`: a missing field reads as an empty list.
+    #[serde(default)]
+    pub check_now: Vec<String>,
+}
+
 /// Body of `POST /targets/:id/metrics`, matching `submitReadingSchema`.
 #[derive(Debug, Clone, Serialize)]
 pub struct Reading {
@@ -106,14 +116,10 @@ impl ApiClient {
         Ok(check(resp).await?.json().await?)
     }
 
-    pub async fn get_metrics(
-        &self,
-        target_id: i64,
-        api_key: &str,
-    ) -> Result<Vec<MetricSpec>, ApiError> {
+    pub async fn poll(&self, target_id: i64, api_key: &str) -> Result<AgentPoll, ApiError> {
         let resp = self
             .http
-            .get(format!("{}/targets/{target_id}/metrics", self.base_url))
+            .get(format!("{}/targets/{target_id}/poll", self.base_url))
             .header("X-Api-Key", api_key)
             .send()
             .await?;
@@ -177,5 +183,20 @@ mod tests {
                 "recorded_at": "t"
             })
         );
+    }
+
+    #[test]
+    fn poll_parses_with_and_without_checks() {
+        let with_checks: AgentPoll = serde_json::from_value(serde_json::json!({
+            "metrics": [{"metric_key": "cpu", "report_interval_sec": 60}],
+            "check_now": ["cpu"]
+        }))
+        .expect("valid poll body");
+        let without_checks: AgentPoll =
+            serde_json::from_value(serde_json::json!({"metrics": []})).expect("valid poll body");
+
+        assert_eq!(with_checks.metrics[0].metric_key, "cpu");
+        assert_eq!(with_checks.check_now, ["cpu"]);
+        assert!(without_checks.check_now.is_empty());
     }
 }

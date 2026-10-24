@@ -3,7 +3,8 @@
 //! One loop ticks every `TICK`. On each tick it:
 //! 1. starts every due metric whose previous run has finished (skip while running);
 //! 2. starts a send of pending readings, unless a send is still in flight;
-//! 3. every `REFRESH`, re-fetches the metric list from the server.
+//! 3. every `REFRESH`, polls the server for the metric list and for metrics a
+//!    user asked to check now, which then run on the next tick.
 //!
 //! Only the latest unsent reading per metric is kept (one reading carries
 //! every device of a per-device metric), so an outage costs history but never
@@ -18,7 +19,9 @@ use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
 use tracing::{debug, info, warn};
 
-use crate::api_client::{ApiClient, ApiError, DeviceValue, MetricSpec, Reading, ReadingValues};
+use crate::api_client::{
+    AgentPoll, ApiClient, ApiError, DeviceValue, MetricSpec, Reading, ReadingValues,
+};
 use crate::collectors::{DeviceCollector, Registry, Sample};
 
 const TICK: Duration = Duration::from_secs(5);
@@ -42,7 +45,7 @@ pub struct Scheduler {
     metrics: HashMap<String, MetricState>,
     pending: Pending,
     sending: Option<JoinHandle<()>>,
-    refreshing: Option<JoinHandle<Result<Vec<MetricSpec>, ApiError>>>,
+    refreshing: Option<JoinHandle<Result<AgentPoll, ApiError>>>,
     last_refresh: Instant,
     /// Assigned metrics with no collector on this OS, so each is logged once.
     unsupported: HashSet<String>,
@@ -165,7 +168,10 @@ impl Scheduler {
         if self.refreshing.as_ref().is_some_and(|h| h.is_finished()) {
             let handle = self.refreshing.take().expect("checked is_some above");
             match handle.await {
-                Ok(Ok(list)) => self.apply_metric_list(list),
+                Ok(Ok(poll)) => {
+                    self.apply_metric_list(poll.metrics);
+                    self.request_checks(&poll.check_now);
+                }
                 Ok(Err(e)) => warn!(error = %e, "refreshing metric list failed; keeping current list"),
                 Err(e) => warn!(error = %e, "metric list refresh task panicked"),
             }
@@ -177,8 +183,20 @@ impl Scheduler {
             let api_key = Arc::clone(&self.api_key);
             let target_id = self.target_id;
             self.refreshing = Some(tokio::spawn(async move {
-                client.get_metrics(target_id, &api_key).await
+                client.poll(target_id, &api_key).await
             }));
+        }
+    }
+
+    /// Makes each requested metric due on the next tick; one still running
+    /// starts on the first tick after it finishes. Keys without a collector
+    /// here are ignored.
+    fn request_checks(&mut self, keys: &[String]) {
+        for key in keys {
+            if let Some(metric) = self.metrics.get_mut(key) {
+                info!(metric_key = %key, "check requested; collecting now");
+                metric.last_run = None;
+            }
         }
     }
 
@@ -281,7 +299,40 @@ fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<String, Reading>
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
+
     use super::*;
+    use crate::collectors::Collector;
+
+    struct StubCollector;
+
+    #[async_trait]
+    impl Collector for StubCollector {
+        async fn collect(&self) -> Result<f64> {
+            Ok(0.0)
+        }
+    }
+
+    fn spec(key: &str) -> MetricSpec {
+        MetricSpec { metric_key: key.to_owned(), report_interval_sec: 3600 }
+    }
+
+    #[test]
+    fn requested_check_makes_only_that_metric_due() {
+        let stub: Arc<dyn DeviceCollector> = Arc::new(StubCollector);
+        let registry = Registry::from([("a", Arc::clone(&stub)), ("b", stub)]);
+        let client = ApiClient::new("http://localhost").expect("client builds");
+        let mut scheduler = Scheduler::new(client, 1, "key", registry, vec![spec("a"), spec("b")]);
+        let ran_at = Instant::now();
+        for metric in scheduler.metrics.values_mut() {
+            metric.last_run = Some(ran_at);
+        }
+
+        scheduler.request_checks(&["a".to_owned(), "unknown".to_owned()]);
+
+        assert_eq!(scheduler.metrics["a"].last_run, None);
+        assert_eq!(scheduler.metrics["b"].last_run, Some(ran_at));
+    }
 
     fn sample(device: Option<&str>, value: f64) -> Sample {
         Sample { device: device.map(str::to_owned), value }
