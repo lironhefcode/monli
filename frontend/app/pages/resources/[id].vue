@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMetricCheck } from "~/composables/useMetricCheck";
 import type { TemplateMetricInput } from "~/types/monitoring";
 import type {
   ChartSeries,
@@ -17,7 +18,11 @@ const router = useRouter();
 const targetId = computed(() => Number(route.params.id));
 const { canEdit } = useAuth();
 
-const { data: target, error, refresh } = useFetch<TargetDetail>(() => `/api/targets/${targetId.value}`);
+const {
+  data: target,
+  error,
+  refresh,
+} = useFetch<TargetDetail>(() => `/api/targets/${targetId.value}`);
 const { data: allTemplates } = useFetch<TemplateSummary[]>("/api/templates");
 
 const notFound = computed(() => error.value?.statusCode === 404);
@@ -29,8 +34,10 @@ const tabs = [
   { label: "Graphs", value: "graphs" },
 ];
 const tab = computed({
-  get: () => tabs.find((item) => item.value === route.query.tab)?.value ?? "details",
-  set: (value: string) => router.replace({ query: { ...route.query, tab: value } }),
+  get: () =>
+    tabs.find((item) => item.value === route.query.tab)?.value ?? "details",
+  set: (value: string) =>
+    router.replace({ query: { ...route.query, tab: value } }),
 });
 
 const ranges: { label: string; value: HistoryRange }[] = [
@@ -40,14 +47,15 @@ const ranges: { label: string; value: HistoryRange }[] = [
   { label: "7d", value: "7d" },
 ];
 const range = computed<HistoryRange>({
-  get: () => ranges.find((item) => item.value === route.query.range)?.value ?? "1h",
+  get: () =>
+    ranges.find((item) => item.value === route.query.range)?.value ?? "1h",
   set: (value) => router.replace({ query: { ...route.query, range: value } }),
 });
 
 // History is only fetched while the Graphs tab is open.
 const { data: history, execute: fetchHistory } = useFetch<TargetHistory>(
   () => `/api/targets/${targetId.value}/history`,
-  { query: { range }, immediate: false, watch: false }
+  { query: { range }, immediate: false, watch: false },
 );
 function loadHistory() {
   if (tab.value === "graphs") fetchHistory();
@@ -61,7 +69,13 @@ function seriesKey(metricId: number, interfaceId: number | null) {
 }
 
 const pointsBySeries = computed(
-  () => new Map(history.value?.metrics.map((series) => [seriesKey(series.metricId, series.interfaceId), series.points]))
+  () =>
+    new Map(
+      history.value?.metrics.map((series) => [
+        seriesKey(series.metricId, series.interfaceId),
+        series.points,
+      ]),
+    ),
 );
 
 // One chart per metric. Per-device metrics get a line per monitored interface
@@ -75,18 +89,22 @@ const charts = computed(() =>
           .map((item) => ({ label: item.name, interfaceId: item.id }))
       : [{ label: null, interfaceId: null }];
     const series: ChartSeries[] = sources.flatMap(({ label, interfaceId }) => {
-      const points = pointsBySeries.value.get(seriesKey(metric.metric.id, interfaceId));
+      const points = pointsBySeries.value.get(
+        seriesKey(metric.metric.id, interfaceId),
+      );
       return points?.length ? [{ label, points }] : [];
     });
     return { metric, series };
-  })
+  }),
 );
 
 const toast = useToast();
 
 // Only offer templates that aren't assigned yet (the API answers 409 otherwise).
 const templateOptions = computed(() => {
-  const assigned = new Set(target.value?.templates.map((template) => template.id));
+  const assigned = new Set(
+    target.value?.templates.map((template) => template.id),
+  );
   return (allTemplates.value ?? [])
     .filter((template) => !assigned.has(template.id))
     .map((template) => ({ label: template.name, value: template.id }));
@@ -106,7 +124,11 @@ async function addTemplate() {
     selectedTemplateId.value = undefined;
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't add template", description: apiErrorMessage(err), color: "error" });
+    toast.add({
+      title: "Couldn't add template",
+      description: apiErrorMessage(err),
+      color: "error",
+    });
   } finally {
     busy.value = false;
   }
@@ -115,10 +137,16 @@ async function addTemplate() {
 async function removeTemplate(templateId: number) {
   busy.value = true;
   try {
-    await $fetch(`/api/targets/${targetId.value}/templates/${templateId}`, { method: "DELETE" });
+    await $fetch(`/api/targets/${targetId.value}/templates/${templateId}`, {
+      method: "DELETE",
+    });
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't remove template", description: apiErrorMessage(err), color: "error" });
+    toast.add({
+      title: "Couldn't remove template",
+      description: apiErrorMessage(err),
+      color: "error",
+    });
   } finally {
     busy.value = false;
   }
@@ -130,11 +158,18 @@ const saving = ref(false);
 async function saveDetails(input: TargetUpdateInput) {
   saving.value = true;
   try {
-    await $fetch(`/api/targets/${targetId.value}`, { method: "PATCH", body: input });
+    await $fetch(`/api/targets/${targetId.value}`, {
+      method: "PATCH",
+      body: input,
+    });
     editOpen.value = false;
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't save changes", description: apiErrorMessage(err), color: "error" });
+    toast.add({
+      title: "Couldn't save changes",
+      description: apiErrorMessage(err),
+      color: "error",
+    });
   } finally {
     saving.value = false;
   }
@@ -157,7 +192,11 @@ async function changeMetric(request: () => Promise<unknown>) {
     editingMetric.value = null;
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't save metric", description: apiErrorMessage(err), color: "error" });
+    toast.add({
+      title: "Couldn't save metric",
+      description: apiErrorMessage(err),
+      color: "error",
+    });
   } finally {
     savingMetric.value = false;
   }
@@ -166,7 +205,10 @@ async function changeMetric(request: () => Promise<unknown>) {
 function customizeMetric(input: TemplateMetricInput) {
   const metricId = editingMetric.value?.metric.id;
   return changeMetric(() =>
-    $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "PUT", body: input })
+    $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, {
+      method: "PUT",
+      body: input,
+    }),
   );
 }
 
@@ -182,7 +224,11 @@ function checkMetric(metric: TargetMetric) {
 
 function resetMetric() {
   const metricId = editingMetric.value?.metric.id;
-  return changeMetric(() => $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, { method: "DELETE" }));
+  return changeMetric(() =>
+    $fetch(`/api/targets/${targetId.value}/overrides/${metricId}`, {
+      method: "DELETE",
+    }),
+  );
 }
 
 const interfaceKinds: Record<TargetInterface["kind"], string> = {
@@ -195,7 +241,9 @@ const interfaceKinds: Record<TargetInterface["kind"], string> = {
 const INTERFACE_STALE_AFTER_MS = 3 * 60 * 1000;
 
 function isStale(item: TargetInterface) {
-  return Date.now() - new Date(item.lastSeenAt).getTime() > INTERFACE_STALE_AFTER_MS;
+  return (
+    Date.now() - new Date(item.lastSeenAt).getTime() > INTERFACE_STALE_AFTER_MS
+  );
 }
 
 const togglingInterfaceId = ref<number | null>(null);
@@ -204,17 +252,26 @@ const togglingInterfaceId = ref<number | null>(null);
 async function setMonitored(item: TargetInterface, monitored: boolean) {
   togglingInterfaceId.value = item.id;
   try {
-    await $fetch(`/api/targets/${targetId.value}/interfaces/${item.id}`, { method: "PATCH", body: { monitored } });
+    await $fetch(`/api/targets/${targetId.value}/interfaces/${item.id}`, {
+      method: "PATCH",
+      body: { monitored },
+    });
     await refresh();
   } catch (err) {
-    toast.add({ title: "Couldn't change monitoring", description: apiErrorMessage(err), color: "error" });
+    toast.add({
+      title: "Couldn't change monitoring",
+      description: apiErrorMessage(err),
+      color: "error",
+    });
   } finally {
     togglingInterfaceId.value = null;
   }
 }
 
 // "linux, x86_64"; shown after the distro when the agent reports one.
-const osAndArch = computed(() => [target.value?.os, target.value?.arch].filter(Boolean).join(", "));
+const osAndArch = computed(() =>
+  [target.value?.os, target.value?.arch].filter(Boolean).join(", "),
+);
 
 function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -223,11 +280,18 @@ function formatDate(value: string | null) {
 
 <template>
   <div>
-    <NuxtLink to="/resources" class="text-muted hover:text-highlighted">Resources</NuxtLink>
+    <NuxtLink to="/resources" class="text-muted hover:text-highlighted"
+      >Resources</NuxtLink
+    >
 
-    <div v-if="notFound" class="mt-4 rounded-(--ui-radius) border border-default bg-muted px-4 py-6">
+    <div
+      v-if="notFound"
+      class="mt-4 rounded-(--ui-radius) border border-default bg-muted px-4 py-6"
+    >
       <p class="text-highlighted">Resource not found.</p>
-      <NuxtLink to="/resources" class="text-primary hover:underline">Back to resources</NuxtLink>
+      <NuxtLink to="/resources" class="text-primary hover:underline"
+        >Back to resources</NuxtLink
+      >
     </div>
 
     <UAlert
@@ -242,12 +306,23 @@ function formatDate(value: string | null) {
     <p v-else-if="!target" class="mt-4 text-muted">Loading…</p>
 
     <template v-else>
-      <header class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-default pb-4">
-        <h1 class="font-mono text-xl font-semibold text-highlighted">{{ displayName(target) }}</h1>
-        <TargetStatus :status="target.status" :last-seen-at="target.lastSeenAt" />
+      <header
+        class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-default pb-4"
+      >
+        <h1 class="font-mono text-xl font-semibold text-highlighted">
+          {{ displayName(target) }}
+        </h1>
+        <TargetStatus
+          :status="target.status"
+          :last-seen-at="target.lastSeenAt"
+        />
       </header>
 
-      <UModal v-model:open="metricModalOpen" title="Edit metric" :ui="{ content: 'sm:max-w-3xl' }">
+      <UModal
+        v-model:open="metricModalOpen"
+        title="Edit metric"
+        :ui="{ content: 'sm:max-w-3xl' }"
+      >
         <template #body>
           <MetricOverrideForm
             v-if="editingMetric"
@@ -263,19 +338,48 @@ function formatDate(value: string | null) {
 
       <UModal v-model:open="editOpen" title="Edit resource">
         <template #body>
-          <TargetEditForm :target="target" :saving="saving" @submit="saveDetails" @cancel="editOpen = false" />
+          <TargetEditForm
+            :target="target"
+            :saving="saving"
+            @submit="saveDetails"
+            @cancel="editOpen = false"
+          />
         </template>
       </UModal>
 
-      <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
+      <UTabs
+        v-model="tab"
+        :items="tabs"
+        :content="false"
+        variant="link"
+        class="mt-4"
+      />
 
       <div v-if="tab === 'details'" class="mt-6 space-y-6">
-        <section aria-labelledby="details-title" class="rounded-(--ui-radius) border border-default bg-muted">
-          <div class="flex items-center justify-between border-b border-default px-4 py-2">
-            <h2 id="details-title" class="text-base font-semibold text-highlighted">Details</h2>
-            <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editOpen = true" />
+        <section
+          aria-labelledby="details-title"
+          class="rounded-(--ui-radius) border border-default bg-muted"
+        >
+          <div
+            class="flex items-center justify-between border-b border-default px-4 py-2"
+          >
+            <h2
+              id="details-title"
+              class="text-base font-semibold text-highlighted"
+            >
+              Details
+            </h2>
+            <ActionButton
+              label="Edit"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              @click="editOpen = true"
+            />
           </div>
-          <dl class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+          <dl
+            class="grid gap-x-8 gap-y-3 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
             <div>
               <dt class="text-muted">Hostname</dt>
               <dd class="font-mono text-highlighted">{{ target.name }}</dd>
@@ -286,7 +390,9 @@ function formatDate(value: string | null) {
             </div>
             <div>
               <dt class="text-muted">IP address</dt>
-              <dd class="font-mono text-highlighted">{{ target.ipAddress ?? "—" }}</dd>
+              <dd class="font-mono text-highlighted">
+                {{ target.ipAddress ?? "—" }}
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Type</dt>
@@ -294,25 +400,33 @@ function formatDate(value: string | null) {
             </div>
             <div>
               <dt class="text-muted">Team</dt>
-              <dd class="text-highlighted">{{ target.responsibleTeam ?? "—" }}</dd>
+              <dd class="text-highlighted">
+                {{ target.responsibleTeam ?? "—" }}
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Operating system</dt>
               <dd class="text-highlighted">
                 <template v-if="target.distro">
                   {{ target.distro }}
-                  <span v-if="osAndArch" class="text-muted">{{ osAndArch }}</span>
+                  <span v-if="osAndArch" class="text-muted">{{
+                    osAndArch
+                  }}</span>
                 </template>
                 <template v-else>{{ osAndArch || "—" }}</template>
               </dd>
             </div>
             <div>
               <dt class="text-muted">Last seen</dt>
-              <dd class="text-highlighted">{{ formatDate(target.lastSeenAt) }}</dd>
+              <dd class="text-highlighted">
+                {{ formatDate(target.lastSeenAt) }}
+              </dd>
             </div>
             <div>
               <dt class="text-muted">Added</dt>
-              <dd class="text-highlighted">{{ formatDate(target.createdAt) }}</dd>
+              <dd class="text-highlighted">
+                {{ formatDate(target.createdAt) }}
+              </dd>
             </div>
             <div v-if="target.description" class="sm:col-span-2 lg:col-span-3">
               <dt class="text-muted">Description</dt>
@@ -321,35 +435,59 @@ function formatDate(value: string | null) {
           </dl>
         </section>
 
-        <section aria-labelledby="interfaces-title" class="rounded-(--ui-radius) border border-default bg-muted">
+        <section
+          aria-labelledby="interfaces-title"
+          class="rounded-(--ui-radius) border border-default bg-muted"
+        >
           <header class="border-b border-default px-4 py-3">
-            <h2 id="interfaces-title" class="text-base font-semibold text-highlighted">Interfaces</h2>
+            <h2
+              id="interfaces-title"
+              class="text-base font-semibold text-highlighted"
+            >
+              Interfaces
+            </h2>
             <p class="text-muted">
-              Disks and network interfaces the agent reports. Each one alerts on its own; turn one off to ignore it.
+              Disks and network interfaces the agent reports. Each one alerts on
+              its own; turn one off to ignore it.
             </p>
           </header>
 
           <p v-if="target.interfaces.length === 0" class="px-4 py-3 text-muted">
-            None reported yet. They appear once a disk or network metric is assigned and the agent reports it.
+            None reported yet. They appear once a disk or network metric is
+            assigned and the agent reports it.
           </p>
 
           <div v-else class="overflow-x-auto">
             <table class="w-full text-left">
               <thead class="border-b border-default text-muted">
                 <tr>
-                  <th scope="col" class="py-2 pl-4 pr-4 font-medium">Interface</th>
+                  <th scope="col" class="py-2 pl-4 pr-4 font-medium">
+                    Interface
+                  </th>
                   <th scope="col" class="px-4 py-2 font-medium">Kind</th>
                   <th scope="col" class="px-4 py-2 font-medium">Last seen</th>
                   <th scope="col" class="px-4 py-2 font-medium">Monitored</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in target.interfaces" :key="item.id" class="border-b border-default last:border-b-0">
-                  <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ item.name }}</td>
-                  <td class="px-4 py-2.5 text-toned">{{ interfaceKinds[item.kind] }}</td>
+                <tr
+                  v-for="item in target.interfaces"
+                  :key="item.id"
+                  class="border-b border-default last:border-b-0"
+                >
+                  <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">
+                    {{ item.name }}
+                  </td>
+                  <td class="px-4 py-2.5 text-toned">
+                    {{ interfaceKinds[item.kind] }}
+                  </td>
                   <td class="px-4 py-2.5">
-                    <span :title="formatDate(item.lastSeenAt)">{{ formatAgo(item.lastSeenAt) }}</span>
-                    <span v-if="isStale(item)" class="block text-muted">Not reporting</span>
+                    <span :title="formatDate(item.lastSeenAt)">{{
+                      formatAgo(item.lastSeenAt)
+                    }}</span>
+                    <span v-if="isStale(item)" class="block text-muted"
+                      >Not reporting</span
+                    >
                   </td>
                   <td class="px-4 py-2.5">
                     <USwitch
@@ -367,14 +505,28 @@ function formatDate(value: string | null) {
       </div>
 
       <div v-else-if="tab === 'config'" class="mt-6 space-y-6">
-        <section aria-labelledby="templates-title" class="rounded-(--ui-radius) border border-default bg-muted">
+        <section
+          aria-labelledby="templates-title"
+          class="rounded-(--ui-radius) border border-default bg-muted"
+        >
           <header class="border-b border-default px-4 py-3">
-            <h2 id="templates-title" class="text-base font-semibold text-highlighted">Templates</h2>
-            <p class="text-muted">Metrics are monitored from every template assigned here.</p>
+            <h2
+              id="templates-title"
+              class="text-base font-semibold text-highlighted"
+            >
+              Templates
+            </h2>
+            <p class="text-muted">
+              Metrics are monitored from every template assigned here.
+            </p>
           </header>
 
           <ul v-if="target.templates.length" class="divide-y divide-default">
-            <li v-for="template in target.templates" :key="template.id" class="flex items-center justify-between gap-3 px-4 py-2">
+            <li
+              v-for="template in target.templates"
+              :key="template.id"
+              class="flex items-center justify-between gap-3 px-4 py-2"
+            >
               <span class="text-highlighted">{{ template.name }}</span>
               <ActionButton
                 label="Remove"
@@ -386,9 +538,13 @@ function formatDate(value: string | null) {
               />
             </li>
           </ul>
-          <p v-else class="px-4 py-3 text-muted">No templates assigned, so nothing is monitored yet.</p>
+          <p v-else class="px-4 py-3 text-muted">
+            No templates assigned, so nothing is monitored yet.
+          </p>
 
-          <div class="flex flex-wrap items-center gap-2 border-t border-default px-4 py-3">
+          <div
+            class="flex flex-wrap items-center gap-2 border-t border-default px-4 py-3"
+          >
             <USelect
               v-model="selectedTemplateId"
               :items="templateOptions"
@@ -397,18 +553,39 @@ function formatDate(value: string | null) {
               class="w-64"
               :disabled="!canEdit || templateOptions.length === 0"
             />
-            <ActionButton label="Add template" :loading="busy" :disabled="selectedTemplateId === undefined" @click="addTemplate" />
-            <span v-if="allTemplates && templateOptions.length === 0" class="text-dimmed">All templates are assigned.</span>
+            <ActionButton
+              label="Add template"
+              :loading="busy"
+              :disabled="selectedTemplateId === undefined"
+              @click="addTemplate"
+            />
+            <span
+              v-if="allTemplates && templateOptions.length === 0"
+              class="text-dimmed"
+              >All templates are assigned.</span
+            >
           </div>
         </section>
 
-        <section aria-labelledby="metrics-title" class="rounded-(--ui-radius) border border-default bg-muted">
+        <section
+          aria-labelledby="metrics-title"
+          class="rounded-(--ui-radius) border border-default bg-muted"
+        >
           <header class="border-b border-default px-4 py-3">
-            <h2 id="metrics-title" class="text-base font-semibold text-highlighted">Assigned metrics</h2>
-            <p class="text-muted">The thresholds alerting uses for this resource.</p>
+            <h2
+              id="metrics-title"
+              class="text-base font-semibold text-highlighted"
+            >
+              Assigned metrics
+            </h2>
+            <p class="text-muted">
+              The thresholds alerting uses for this resource.
+            </p>
           </header>
 
-          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">Assign a template to monitor metrics.</p>
+          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">
+            Assign a template to monitor metrics.
+          </p>
 
           <div v-else class="overflow-x-auto">
             <table class="w-full text-left">
@@ -419,12 +596,20 @@ function formatDate(value: string | null) {
                   <th scope="col" class="px-4 py-2 font-medium">Priority</th>
                   <th scope="col" class="px-4 py-2 font-medium">Interval</th>
                   <th scope="col" class="px-4 py-2 font-medium">From</th>
-                  <th scope="col" class="px-4 py-2"><span class="sr-only">Actions</span></th>
+                  <th scope="col" class="px-4 py-2">
+                    <span class="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="metric in target.metrics" :key="metric.metric.id" class="border-b border-default last:border-b-0">
-                  <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">{{ metric.metric.metricKey }}</td>
+                <tr
+                  v-for="metric in target.metrics"
+                  :key="metric.metric.id"
+                  class="border-b border-default last:border-b-0"
+                >
+                  <td class="py-2.5 pl-4 pr-4 font-mono text-highlighted">
+                    {{ metric.metric.metricKey }}
+                  </td>
                   <td class="px-4 py-2.5">
                     <LevelRules
                       :condition="metric.condition"
@@ -432,15 +617,24 @@ function formatDate(value: string | null) {
                       :critical-threshold="metric.criticalThreshold"
                       :unit="metric.metric.unit"
                     />
-                    <span v-if="metric.consecutiveBreaches > 1" class="block text-muted">
+                    <span
+                      v-if="metric.consecutiveBreaches > 1"
+                      class="block text-muted"
+                    >
                       after {{ metric.consecutiveBreaches }} readings in a row
                     </span>
                   </td>
-                  <td class="px-4 py-2.5 text-toned">{{ metric.priority.toUpperCase() }}</td>
-                  <td class="px-4 py-2.5 tabular-nums">{{ metric.reportIntervalSec }} s</td>
+                  <td class="px-4 py-2.5 text-toned">
+                    {{ metric.priority.toUpperCase() }}
+                  </td>
+                  <td class="px-4 py-2.5 tabular-nums">
+                    {{ metric.reportIntervalSec }} s
+                  </td>
                   <td class="px-4 py-2.5 text-toned">
                     {{ metric.source.name }}
-                    <span v-if="metric.overridden" class="text-muted">(customized)</span>
+                    <span v-if="metric.overridden" class="text-muted"
+                      >(customized)</span
+                    >
                   </td>
                   <td class="px-4 py-2.5 text-right">
                     <span class="inline-flex gap-1">
@@ -452,7 +646,13 @@ function formatDate(value: string | null) {
                         :loading="isChecking(targetId, metric.metric.id)"
                         @click="checkMetric(metric)"
                       />
-                      <ActionButton label="Edit" color="neutral" variant="outline" size="sm" @click="editingMetric = metric" />
+                      <ActionButton
+                        label="Edit"
+                        color="neutral"
+                        variant="outline"
+                        size="sm"
+                        @click="editingMetric = metric"
+                      />
                     </span>
                   </td>
                 </tr>
@@ -463,16 +663,37 @@ function formatDate(value: string | null) {
       </div>
 
       <div v-else class="mt-6">
-        <section aria-labelledby="graphs-title" class="rounded-(--ui-radius) border border-default bg-muted">
-          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3">
+        <section
+          aria-labelledby="graphs-title"
+          class="rounded-(--ui-radius) border border-default bg-muted"
+        >
+          <header
+            class="flex flex-wrap items-center justify-between gap-3 border-b border-default px-4 py-3"
+          >
             <div>
-              <h2 id="graphs-title" class="text-base font-semibold text-highlighted">Graphs</h2>
-              <p class="text-muted">Average per interval; the shaded band reaches each interval's peak.</p>
+              <h2
+                id="graphs-title"
+                class="text-base font-semibold text-highlighted"
+              >
+                Graphs
+              </h2>
+              <p class="text-muted">
+                Average per interval; the shaded band reaches each interval's
+                peak.
+              </p>
             </div>
-            <UTabs v-model="range" :items="ranges" :content="false" size="xs" aria-label="Time range" />
+            <UTabs
+              v-model="range"
+              :items="ranges"
+              :content="false"
+              size="xs"
+              aria-label="Time range"
+            />
           </header>
 
-          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">Assign a template to see graphs.</p>
+          <p v-if="target.metrics.length === 0" class="px-4 py-3 text-muted">
+            Assign a template to see graphs.
+          </p>
           <p v-else-if="!history" class="px-4 py-3 text-muted">Loading…</p>
 
           <div v-else class="grid gap-4 p-4 lg:grid-cols-2">
@@ -481,7 +702,9 @@ function formatDate(value: string | null) {
               :key="chart.metric.metric.id"
               class="rounded-(--ui-radius) border border-default bg-default px-4 py-3 lg:last:odd:col-span-2"
             >
-              <figcaption class="mb-2 font-mono text-highlighted">{{ chart.metric.metric.metricKey }}</figcaption>
+              <figcaption class="mb-2 font-mono text-highlighted">
+                {{ chart.metric.metric.metricKey }}
+              </figcaption>
               <MetricChart
                 v-if="chart.series.length"
                 :series="chart.series"
@@ -492,7 +715,12 @@ function formatDate(value: string | null) {
                 :warning-threshold="chart.metric.warningThreshold"
                 :critical-threshold="chart.metric.criticalThreshold"
               />
-              <p v-else class="flex h-[180px] items-center justify-center text-muted">No readings in this range.</p>
+              <p
+                v-else
+                class="flex h-[180px] items-center justify-center text-muted"
+              >
+                No readings in this range.
+              </p>
             </figure>
           </div>
         </section>
