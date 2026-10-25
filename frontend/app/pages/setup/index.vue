@@ -21,10 +21,10 @@
       <section aria-labelledby="notifications-title" class="rounded-(--ui-radius) border border-default bg-muted">
         <header class="border-b border-default px-4 py-3">
           <h2 id="notifications-title" class="text-base font-semibold text-highlighted">Notifications</h2>
-          <p class="text-muted">Send alerts to Discord, Slack or any webhook.</p>
+          <p class="text-muted">Send alerts to Discord, Slack, email or any webhook, by team and priority.</p>
         </header>
         <div class="px-4 py-4">
-          <ActionButton requires="admin" label="Manage webhooks" to="/setup/notifications" />
+          <ActionButton requires="admin" label="Manage notifications" to="/setup/notifications" />
         </div>
       </section>
     </div>
