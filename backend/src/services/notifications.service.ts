@@ -3,6 +3,7 @@ import type { EmailServer, Prisma } from "@prisma/client";
 import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../config/env.js";
 import { prisma } from "../db/prisma.js";
+import { urlKindError, type WebhookKind } from "../schemas/notifications.schema.js";
 import { formatNumber } from "../utils/alert-levels.js";
 import { open } from "../utils/secret-box.js";
 import { loadEmailServer } from "./email-server.service.js";
@@ -187,6 +188,9 @@ async function sendWebhook(destination: DestinationWithRecipients, payload: unkn
   } catch (err) {
     return { status: null, error: errorText(err) };
   }
+  // Rechecked here too, for URLs saved before the rule existed.
+  const kindError = urlKindError(destination.kind as WebhookKind, url);
+  if (kindError) return { status: null, error: kindError };
   return withRetry(() => postWebhook(url, payload));
 }
 

@@ -19,6 +19,25 @@ const httpUrl = z
     message: "URL must be a valid http or https URL",
   });
 
+// Discord and Slack URLs may only point at those services, so a destination
+// of those kinds can't be aimed at an internal address; generic webhooks stay
+// open for self-hosted endpoints.
+const officialHosts: Partial<Record<WebhookKind, string[]>> = {
+  discord: ["discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"],
+  slack: ["hooks.slack.com"],
+};
+
+// Why url can't be used for kind, or null when it can.
+export function urlKindError(kind: WebhookKind, url: string): string | null {
+  const hosts = officialHosts[kind];
+  if (!hosts) return null;
+  const parsed = new URL(url);
+  // Exact match; a trailing dot ("discord.com.") names the same host.
+  const host = parsed.hostname.replace(/\.$/, "");
+  if (parsed.protocol === "https:" && parsed.port === "" && hosts.includes(host)) return null;
+  return `${kind === "discord" ? "Discord" : "Slack"} webhook URLs must start with https://${hosts[0]}/`;
+}
+
 const emailAddresses = z.array(z.string().trim().email()).max(20);
 const userIds = z.array(z.string().min(1)).max(50);
 

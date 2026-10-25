@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
-import type { CreateDestinationInput, UpdateDestinationInput } from "../schemas/notifications.schema.js";
+import {
+  urlKindError,
+  type CreateDestinationInput,
+  type UpdateDestinationInput,
+  type WebhookKind,
+} from "../schemas/notifications.schema.js";
 import { HttpError } from "../utils/http-error.js";
 import { open, seal } from "../utils/secret-box.js";
 import { destinationWithRecipients, sendTestMessage } from "./notifications.service.js";
@@ -56,9 +61,15 @@ async function checkRecipients(emailAddresses: string[], userIds: string[]) {
 
 const recipientRows = (userIds: string[]) => [...new Set(userIds)].map((userId) => ({ userId }));
 
+function checkUrl(kind: WebhookKind, url: string) {
+  const message = urlKindError(kind, url);
+  if (message) throw new HttpError(400, message);
+}
+
 export async function createDestination(input: CreateDestinationInput) {
   if (input.kind !== "email") {
     const { url, ...fields } = input;
+    checkUrl(fields.kind, url);
     return toRow(await prisma.notificationDestination.create({ ...destinationRow, data: { ...fields, url: seal(url) } }));
   }
   const { email_addresses, user_ids, ...fields } = input;
@@ -80,6 +91,7 @@ export async function updateDestination(destinationId: number, input: UpdateDest
     throw new HttpError(400, "only email destinations have recipients");
   }
 
+  if (!isEmail && url !== undefined) checkUrl(saved.kind as WebhookKind, url);
   if (isEmail && (email_addresses !== undefined || user_ids !== undefined)) {
     await checkRecipients(
       email_addresses ?? saved.emailAddresses,
