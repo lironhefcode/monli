@@ -68,7 +68,7 @@ export interface MessageContext {
   threshold: number;
 }
 
-function formatNumber(value: number) {
+export function formatNumber(value: number) {
   return String(Math.round(value * 100) / 100);
 }
 
