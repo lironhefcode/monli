@@ -12,15 +12,21 @@ pub struct LoadPerCore {
 
 impl LoadPerCore {
     pub fn one_minute() -> Self {
-        Self { window: |load| load.one }
+        Self {
+            window: |load| load.one,
+        }
     }
 
     pub fn five_minutes() -> Self {
-        Self { window: |load| load.five }
+        Self {
+            window: |load| load.five,
+        }
     }
 
     pub fn fifteen_minutes() -> Self {
-        Self { window: |load| load.fifteen }
+        Self {
+            window: |load| load.fifteen,
+        }
     }
 }
 

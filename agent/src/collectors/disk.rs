@@ -56,7 +56,11 @@ pub fn filesystems() -> Vec<Filesystem> {
 /// `server:/export`), which bind mounts of it share. On Windows `name()` is
 /// only the volume label, so the drive itself identifies it.
 fn source(disk: &Disk) -> String {
-    let source = if cfg!(unix) { disk.name() } else { disk.mount_point().as_os_str() };
+    let source = if cfg!(unix) {
+        disk.name()
+    } else {
+        disk.mount_point().as_os_str()
+    };
     source.to_string_lossy().into_owned()
 }
 
@@ -128,7 +132,11 @@ mod tests {
         Mount {
             fs_type: fs_type.to_owned(),
             source: source.to_owned(),
-            filesystem: Filesystem { mount_point: PathBuf::from(mount_point), total, available: 0 },
+            filesystem: Filesystem {
+                mount_point: PathBuf::from(mount_point),
+                total,
+                available: 0,
+            },
         }
     }
 

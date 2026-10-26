@@ -24,7 +24,11 @@ pub struct ProcessCount;
 impl Collector for ProcessCount {
     async fn collect(&self) -> Result<f64> {
         let system = processes();
-        Ok(system.processes().values().filter(|p| is_process(p)).count() as f64)
+        Ok(system
+            .processes()
+            .values()
+            .filter(|p| is_process(p))
+            .count() as f64)
     }
 }
 

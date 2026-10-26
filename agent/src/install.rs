@@ -70,7 +70,9 @@ pub fn run_if_baked(credentials: &Path) -> Option<ExitCode> {
 
 fn install(baked: &Baked, credentials: &Path) -> Result<()> {
     // Lock the folder down before the API key is written into it.
-    let data_dir = credentials.parent().context("credentials path has no folder")?;
+    let data_dir = credentials
+        .parent()
+        .context("credentials path has no folder")?;
     fs::create_dir_all(data_dir).with_context(|| format!("creating {}", data_dir.display()))?;
     restrict_to_admins(data_dir)?;
 
@@ -106,10 +108,14 @@ fn install(baked: &Baked, credentials: &Path) -> Result<()> {
     let info = service_info(credentials);
     let service = match existing {
         Some(service) => {
-            service.change_config(&info).context("updating the service")?;
+            service
+                .change_config(&info)
+                .context("updating the service")?;
             service
         }
-        None => manager.create_service(&info, access).context("creating the service")?,
+        None => manager
+            .create_service(&info, access)
+            .context("creating the service")?,
     };
     service
         .set_description("Sends this host's metrics to Monli.")
@@ -146,7 +152,11 @@ fn service_info(credentials: &Path) -> ServiceInfo {
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
         executable_path: PathBuf::from(INSTALL_PATH),
-        launch_arguments: vec!["--service".into(), "--credentials".into(), credentials.into()],
+        launch_arguments: vec![
+            "--service".into(),
+            "--credentials".into(),
+            credentials.into(),
+        ],
         dependencies: vec![],
         account_name: None, // LocalSystem
         account_password: None,
@@ -155,15 +165,26 @@ fn service_info(credentials: &Path) -> ServiceInfo {
 
 /// Stops the service and waits until it has, so its exe can be replaced.
 fn stop(service: &Service) -> Result<()> {
-    let state = service.query_status().context("querying the service")?.current_state;
+    let state = service
+        .query_status()
+        .context("querying the service")?
+        .current_state;
     if !matches!(state, ServiceState::Stopped | ServiceState::StopPending) {
         service.stop().context("stopping the service")?;
     }
 
     let deadline = Instant::now() + STOP_TIMEOUT;
-    while service.query_status().context("querying the service")?.current_state != ServiceState::Stopped {
+    while service
+        .query_status()
+        .context("querying the service")?
+        .current_state
+        != ServiceState::Stopped
+    {
         if Instant::now() > deadline {
-            bail!("the running agent did not stop within {}s", STOP_TIMEOUT.as_secs());
+            bail!(
+                "the running agent did not stop within {}s",
+                STOP_TIMEOUT.as_secs()
+            );
         }
         std::thread::sleep(Duration::from_millis(250));
     }
@@ -207,9 +228,13 @@ fn copy_prefix(source: &Path, dest: &Path, len: u64) -> io::Result<()> {
 /// own everything, and nothing inside keeps its own permissions. If any step
 /// fails, the API key is never written.
 fn restrict_to_admins(dir: &Path) -> Result<()> {
-    let metadata = fs::symlink_metadata(dir).with_context(|| format!("reading {}", dir.display()))?;
+    let metadata =
+        fs::symlink_metadata(dir).with_context(|| format!("reading {}", dir.display()))?;
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        bail!("{} is a link, not a folder; delete it and run this again", dir.display());
+        bail!(
+            "{} is a link, not a folder; delete it and run this again",
+            dir.display()
+        );
     }
 
     icacls(dir, &["/setowner", ADMINISTRATORS, "/T", "/C", "/Q"])?;

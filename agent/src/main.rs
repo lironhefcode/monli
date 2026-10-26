@@ -139,7 +139,11 @@ async fn run_agent(credentials: &Path, shutdown: impl Future<Output = ()>) -> Re
         }
     };
 
-    info!(target_id = creds.target_id, count = metrics.len(), "loaded metric list");
+    info!(
+        target_id = creds.target_id,
+        count = metrics.len(),
+        "loaded metric list"
+    );
 
     scheduler::Scheduler::new(
         client,
@@ -160,7 +164,10 @@ async fn enroll(server: &str, token: &str, path: &Path) -> Result<()> {
     let resp = with_retry("registering", || client.register(token, &identity))
         .await
         .map_err(|e| match e {
-            ApiError::Http { status: StatusCode::UNAUTHORIZED, .. } => {
+            ApiError::Http {
+                status: StatusCode::UNAUTHORIZED,
+                ..
+            } => {
                 anyhow!("{e}; {NEW_TOKEN_HINT}")
             }
             e => anyhow!(e).context("registering with server"),
