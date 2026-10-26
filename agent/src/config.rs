@@ -36,10 +36,16 @@ pub enum LoadError {
 pub fn load(path: &Path) -> Result<Credentials, LoadError> {
     let text = fs::read_to_string(path).map_err(|source| match source.kind() {
         io::ErrorKind::NotFound => LoadError::Missing(path.to_owned()),
-        _ => LoadError::Unreadable { path: path.to_owned(), source },
+        _ => LoadError::Unreadable {
+            path: path.to_owned(),
+            source,
+        },
     })?;
 
-    let invalid = |reason: String| LoadError::Invalid { path: path.to_owned(), reason };
+    let invalid = |reason: String| LoadError::Invalid {
+        path: path.to_owned(),
+        reason,
+    };
 
     // Missing fields or wrong types fail here.
     let creds: Credentials = toml::from_str(&text).map_err(|e| invalid(e.message().to_owned()))?;
@@ -52,7 +58,10 @@ pub fn load(path: &Path) -> Result<Credentials, LoadError> {
         return Err(invalid("api_key is empty".into()));
     }
     if creds.target_id <= 0 {
-        return Err(invalid(format!("target_id {} is not a valid id", creds.target_id)));
+        return Err(invalid(format!(
+            "target_id {} is not a valid id",
+            creds.target_id
+        )));
     }
     Ok(creds)
 }
@@ -85,7 +94,6 @@ pub fn save(path: &Path, creds: &Credentials) -> Result<()> {
         .and_then(|()| file.sync_all())
         .with_context(|| format!("writing {}", tmp.display()))?;
 
-    fs::rename(&tmp, path)
-        .with_context(|| format!("moving {} into place", path.display()))?;
+    fs::rename(&tmp, path).with_context(|| format!("moving {} into place", path.display()))?;
     Ok(())
 }

@@ -27,7 +27,11 @@ fn read_cpu_times() -> Result<CpuTimes> {
     if fields.len() < 8 {
         bail!("/proc/stat cpu line has fewer than 8 fields");
     }
-    Ok(CpuTimes { total: fields.iter().sum(), iowait: fields[4], steal: fields[7] })
+    Ok(CpuTimes {
+        total: fields.iter().sum(),
+        iowait: fields[4],
+        steal: fields[7],
+    })
 }
 
 /// Share of CPU time spent in one state since the previous reading, in %.
@@ -39,12 +43,18 @@ pub struct CpuTimeShare {
 impl CpuTimeShare {
     /// Idle while waiting for disk or network I/O.
     pub fn iowait() -> Self {
-        Self { state: |times| times.iowait, sampler: Sampler::new() }
+        Self {
+            state: |times| times.iowait,
+            sampler: Sampler::new(),
+        }
     }
 
     /// Taken by the hypervisor for other VMs.
     pub fn steal() -> Self {
-        Self { state: |times| times.steal, sampler: Sampler::new() }
+        Self {
+            state: |times| times.steal,
+            sampler: Sampler::new(),
+        }
     }
 }
 
@@ -55,7 +65,10 @@ impl Collector for CpuTimeShare {
         let ((spent, total), _) = self
             .sampler
             .change(read_cpu_times, |before, now| {
-                Some((state(now).checked_sub(state(before))?, now.total.checked_sub(before.total)?))
+                Some((
+                    state(now).checked_sub(state(before))?,
+                    now.total.checked_sub(before.total)?,
+                ))
             })
             .await?;
         if total == 0 {

@@ -25,7 +25,10 @@ fn inode_samples() -> Result<Vec<Sample>> {
     let samples: Vec<Sample> = filesystems()
         .iter()
         .filter_map(|filesystem| match used_pct(&filesystem.mount_point) {
-            Ok(Some(value)) => Some(Sample { device: Some(filesystem.device_name()), value }),
+            Ok(Some(value)) => Some(Sample {
+                device: Some(filesystem.device_name()),
+                value,
+            }),
             // No fixed inode limit (e.g. btrfs): nothing to measure.
             Ok(None) => None,
             Err(e) => {

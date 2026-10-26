@@ -89,12 +89,18 @@ ID=ubuntu
 
     #[test]
     fn name_and_version() {
-        assert_eq!(format_distro(UBUNTU, false).as_deref(), Some("Ubuntu 22.04"));
+        assert_eq!(
+            format_distro(UBUNTU, false).as_deref(),
+            Some("Ubuntu 22.04")
+        );
     }
 
     #[test]
     fn wsl_suffix() {
-        assert_eq!(format_distro(UBUNTU, true).as_deref(), Some("Ubuntu 22.04 (WSL)"));
+        assert_eq!(
+            format_distro(UBUNTU, true).as_deref(),
+            Some("Ubuntu 22.04 (WSL)")
+        );
     }
 
     #[test]
@@ -106,7 +112,10 @@ ID=ubuntu
 
     #[test]
     fn name_only() {
-        assert_eq!(format_distro("NAME=Alpine\n", false).as_deref(), Some("Alpine"));
+        assert_eq!(
+            format_distro("NAME=Alpine\n", false).as_deref(),
+            Some("Alpine")
+        );
     }
 
     #[test]

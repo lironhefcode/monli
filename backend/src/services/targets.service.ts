@@ -21,6 +21,7 @@ import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { HttpError } from "../utils/http-error.js";
 import { resolvePolicy } from "../utils/resolve-policy.js";
 import { addCheck, completeCheck, takeUndelivered } from "./metric-checks.service.js";
+import { notifyAlert } from "./notifications.service.js";
 
 export async function resolveTemplateDefault(
   targetId: number,
@@ -344,6 +345,12 @@ async function recordValue(
         ? { lastValue: value, lastValueAt: recordedAt, severity: level, ...message(level) }
         : { lastValue: value, lastValueAt: recordedAt, status: "resolved", resolvedAt: recordedAt },
     });
+    // Only rising to critical is announced; dropping back to warning is not.
+    if (!level) {
+      notifyAlert("resolved", openAlert.id, { by: null, note: null });
+    } else if (level === "critical" && openAlert.severity === "warning") {
+      notifyAlert("escalated", openAlert.id);
+    }
   } else if (level) {
     // consecutive_breaches guards against flapping: the last N readings (this
     // one included) must all breach some level before an alert opens.
@@ -360,7 +367,7 @@ async function recordValue(
       );
 
     if (allBreached) {
-      await prisma.alert.create({
+      const alert = await prisma.alert.create({
         data: {
           targetId,
           metricId: metric.id,
@@ -375,6 +382,7 @@ async function recordValue(
           ...message(level),
         },
       });
+      notifyAlert("opened", alert.id);
     }
   }
 
@@ -487,13 +495,14 @@ export async function setInterfaceMonitored(
     throw new HttpError(404, "interface not found");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const { updated, resolvedIds } = await prisma.$transaction(async (tx) => {
+    let alertIds: number[] = [];
     if (!input.monitored) {
       const openAlerts = await tx.alert.findMany({
         where: { interfaceId, status: "open" },
         select: { id: true },
       });
-      const alertIds = openAlerts.map((alert) => alert.id);
+      alertIds = openAlerts.map((alert) => alert.id);
       await tx.alert.updateMany({
         where: { id: { in: alertIds } },
         data: { status: "resolved", resolvedAt: new Date() },
@@ -507,11 +516,18 @@ export async function setInterfaceMonitored(
         })),
       });
     }
-    return tx.targetInterface.update({
+    const updated = await tx.targetInterface.update({
       where: { id: interfaceId },
       data: { monitored: input.monitored },
     });
+    return { updated, resolvedIds: alertIds };
   });
+
+  // Sent once the transaction has committed, so a rollback announces nothing.
+  for (const alertId of resolvedIds) {
+    notifyAlert("resolved", alertId, { by: author, note: MONITORING_STOPPED_COMMENT });
+  }
+  return updated;
 }
 
 // Window length and bucket size per range, in seconds. Buckets keep every

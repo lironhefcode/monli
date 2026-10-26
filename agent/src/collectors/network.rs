@@ -28,5 +28,7 @@ pub fn transmitted_bytes() -> Result<HashMap<String, u64>> {
 }
 
 pub fn errors() -> Result<HashMap<String, u64>> {
-    Ok(per_interface(|data| data.total_errors_on_received() + data.total_errors_on_transmitted()))
+    Ok(per_interface(|data| {
+        data.total_errors_on_received() + data.total_errors_on_transmitted()
+    }))
 }

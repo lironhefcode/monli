@@ -2,6 +2,7 @@ import { Router } from "express";
 import { agentsRouter } from "./agents.routes.js";
 import { alertsRouter } from "./alerts.routes.js";
 import { metricsRouter } from "./metrics.routes.js";
+import { notificationsRouter } from "./notifications.routes.js";
 import { targetsRouter } from "./targets.routes.js";
 import { templatesRouter } from "./templates.routes.js";
 
@@ -12,3 +13,4 @@ router.use("/templates", templatesRouter);
 router.use("/targets", targetsRouter);
 router.use("/agents", agentsRouter);
 router.use("/alerts", alertsRouter);
+router.use("/notifications", notificationsRouter);

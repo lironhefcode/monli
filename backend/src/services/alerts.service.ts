@@ -5,6 +5,7 @@ import type {
   UpdateAlertInput,
 } from "../schemas/alerts.schema.js";
 import { HttpError } from "../utils/http-error.js";
+import { notifyAlert } from "./notifications.service.js";
 
 export function listAlerts(query: ListAlertsQuery) {
   return prisma.alert.findMany({
@@ -82,5 +83,6 @@ export async function resolveAlert(alertId: number, input: ResolveAlertInput, au
       data: { alertId, action: "resolve", body: input.note ?? null, author },
     }),
   ]);
+  notifyAlert("resolved", alertId, { by: author, note: input.note ?? null });
   return updated;
 }

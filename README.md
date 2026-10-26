@@ -170,3 +170,19 @@ Postgres is published on `localhost:5432` (`POSTGRES_PORT`) with the
 credentials from `.env`, so any client (psql, pgAdmin, DBeaver) can connect
 directly. The tables to watch while testing are `targets` and
 `enrollment_tokens`.
+
+## Checks
+
+CI (`.github/workflows/ci.yml`) runs these on every pull request to `main`.
+To run them locally before pushing:
+
+```
+npm run prisma:generate -w backend
+npm run lint -w backend && npm run typecheck -w backend
+npm run lint -w frontend && npm run typecheck -w frontend
+
+cd agent
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
