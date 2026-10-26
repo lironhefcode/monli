@@ -9,7 +9,9 @@
     "dev:docker": "nuxt dev --dotenv .env.docker",
     "build": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@nuxt/ui": "^4.11.3",
@@ -21,6 +23,10 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "@nuxt/test-utils": "^4.3.4",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^21.0.4",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
   }
 }

@@ -1,4 +1,4 @@
-import { Prisma, type TargetMetricOverride, type TemplateMetric } from "@prisma/client";
+import { Prisma, type TemplateMetric } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import type {
   AssignTemplateInput,
@@ -19,9 +19,10 @@ import {
 } from "../utils/alert-levels.js";
 import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { HttpError } from "../utils/http-error.js";
+import { resolvePolicy } from "../utils/resolve-policy.js";
 import { addCheck, completeCheck, takeUndelivered } from "./metric-checks.service.js";
 
-async function resolveTemplateDefault(
+export async function resolveTemplateDefault(
   targetId: number,
   metricId: number
 ): Promise<TemplateMetric | null> {
@@ -29,31 +30,6 @@ async function resolveTemplateDefault(
     where: { metricId, template: { targetTemplates: { some: { targetId } } } },
     orderBy: { id: "asc" },
   });
-}
-
-// Policy fallback chain, narrowest wins: override → target team (team only) →
-// template default. Shared by alerting and the UI so both see the same values.
-// A customized metric (override) replaces the template's policy as a whole,
-// null thresholds included. Only the team falls through: override, then the
-// target's team, then the template's.
-function resolvePolicy(
-  templateDefault: TemplateMetric,
-  override: TargetMetricOverride | null | undefined,
-  targetResponsibleTeam: string | null
-) {
-  const policy = override ?? templateDefault;
-  return {
-    reportIntervalSec: policy.reportIntervalSec,
-    condition: policy.condition,
-    warningThreshold: policy.warningThreshold,
-    criticalThreshold: policy.criticalThreshold,
-    consecutiveBreaches: policy.consecutiveBreaches,
-    responsibleTeam:
-      override?.responsibleTeam ?? targetResponsibleTeam ?? templateDefault.responsibleTeam,
-    alertSubject: policy.alertSubject,
-    alertDescription: policy.alertDescription,
-    priority: policy.priority,
-  };
 }
 
 // GET /targets — admin list, sorted by displayed name (alias, else name).

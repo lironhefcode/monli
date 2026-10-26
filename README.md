@@ -106,6 +106,24 @@ flowchart LR
   applies migrations on start.
 - In dev, `:8080` serves only `/api` (agents still go through nginx); the UI is on `:3001`.
 
+## Running tests
+
+```sh
+npm run test:db --workspace backend   # throwaway Postgres on :5433 (tmpfs, never the dev DB)
+npm run prisma:generate --workspace backend   # once, if the Prisma client isn't generated yet
+npm test                              # backend and frontend suites
+```
+
+- Backend (`backend/test`, Vitest + supertest): `unit/` covers pure helpers and needs
+  nothing running (`npx vitest run --project unit`). `services/` and `routes/` run against
+  the real test database. Migrations are applied before the run, and each test empties
+  the tables. To use another database, set `TEST_DATABASE_URL` in the shell or in
+  `backend/.env`. Its name must end in `_test`, or the suite refuses to touch it.
+  `npm run typecheck --workspace backend` type-checks the tests.
+- Frontend (`frontend/test`, Vitest + @nuxt/test-utils): `unit/` covers plain utils in
+  node, and `nuxt/` covers components, composables and middleware in the Nuxt environment.
+- Stop the test database with `docker compose -f docker-compose.test.yml down`.
+
 ## Why nginx is in front of the API
 
 Agents don't get a name typed in by an admin — a host's identity is its
