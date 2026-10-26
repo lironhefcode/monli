@@ -17,6 +17,21 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # Same database the tests default to locally (docker-compose.test.yml).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: monli
+          POSTGRES_PASSWORD: monli
+          POSTGRES_DB: monli_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U monli -d monli_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,8 +42,7 @@ jobs:
       - run: npm run prisma:generate -w backend
       - run: npm run lint -w backend
       - run: npm run typecheck -w backend
-      # No-op until the backend has a test script (issue #16).
-      - run: npm test -w backend --if-present
+      - run: npm test -w backend
 
   frontend:
     runs-on: ubuntu-latest
@@ -43,6 +57,7 @@ jobs:
       - run: npm ci --workspace frontend --include-workspace-root
       - run: npm run lint -w frontend
       - run: npm run typecheck -w frontend
+      - run: npm test -w frontend
 
   agent:
     # Both OSes: the agent has unix-only (statvfs) and windows-only (service)

@@ -1,4 +1,4 @@
-import { mountSuspended } from "@nuxt/test-utils/runtime";
+import { mount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 
@@ -9,14 +9,20 @@ function setHidden(value: boolean) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
-async function mountPoller(tick: () => void) {
+// usePolling only needs Vue's lifecycle hooks, so a plain synchronous mount
+// will do: mountSuspended boots the Nuxt app, which can outlast the test
+// timeout on a busy machine.
+let wrapper: VueWrapper | undefined;
+
+function mountPoller(tick: () => void) {
   const Poller = defineComponent({
     setup() {
       usePolling(tick, 1000);
       return () => h("div");
     },
   });
-  return mountSuspended(Poller);
+  wrapper = mount(Poller);
+  return wrapper;
 }
 
 // document.hidden is stubbed per test; the original is put back afterwards.
@@ -26,12 +32,13 @@ beforeEach(() => {
   hidden = false;
   originalHidden = Object.getOwnPropertyDescriptor(document, "hidden");
   Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
-  // Only intervals: mountSuspended waits on real timeouts and microtasks, and
-  // faking those too can stall the mount.
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
+  // Unmounting stops the poller, so no interval leaks into the next test.
+  wrapper?.unmount();
+  wrapper = undefined;
   vi.useRealTimers();
   if (originalHidden) {
     Object.defineProperty(document, "hidden", originalHidden);
@@ -42,18 +49,18 @@ afterEach(() => {
 });
 
 describe("usePolling", () => {
-  it("ticks on every interval while mounted", async () => {
+  it("ticks on every interval while mounted", () => {
     const tick = vi.fn();
-    await mountPoller(tick);
+    mountPoller(tick);
 
     expect(tick).not.toHaveBeenCalled();
     vi.advanceTimersByTime(3000);
     expect(tick).toHaveBeenCalledTimes(3);
   });
 
-  it("pauses while the tab is hidden and ticks right away when it's visible again", async () => {
+  it("pauses while the tab is hidden and ticks right away when it's visible again", () => {
     const tick = vi.fn();
-    await mountPoller(tick);
+    mountPoller(tick);
 
     setHidden(true);
     vi.advanceTimersByTime(5000);
@@ -65,11 +72,11 @@ describe("usePolling", () => {
     expect(tick).toHaveBeenCalledTimes(2);
   });
 
-  it("stops on unmount", async () => {
+  it("stops on unmount", () => {
     const tick = vi.fn();
-    const wrapper = await mountPoller(tick);
+    mountPoller(tick).unmount();
+    wrapper = undefined;
 
-    wrapper.unmount();
     vi.advanceTimersByTime(5000);
     setHidden(true);
     setHidden(false);

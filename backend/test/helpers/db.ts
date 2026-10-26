@@ -3,28 +3,16 @@ import { prisma } from "../../src/db/prisma.js";
 import { createTarget as createTargetService } from "../../src/services/targets.service.js";
 import { assertTestDatabase } from "./test-database.js";
 
-const tables = [
-  "alert_comments",
-  "alerts",
-  "metric_readings",
-  "target_interfaces",
-  "target_metric_overrides",
-  "target_templates",
-  "enrollment_tokens",
-  "targets",
-  "template_metrics",
-  "templates",
-  "metrics",
-  "sessions",
-  "accounts",
-  "verifications",
-  "users",
-];
-
 // Empties every table and restarts ids, for a clean slate per test.
 export async function resetDb() {
   assertTestDatabase(process.env.DATABASE_URL);
-  await prisma.$executeRawUnsafe(`TRUNCATE ${tables.join(", ")} RESTART IDENTITY CASCADE`);
+  // Every table but Prisma's migration log, so new tables are covered too.
+  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+  `;
+  const names = tables.map(({ tablename }) => `"${tablename}"`).join(", ");
+  await prisma.$executeRawUnsafe(`TRUNCATE ${names} RESTART IDENTITY CASCADE`);
 }
 
 export function createMetric(data: Partial<Prisma.MetricCreateInput> = {}) {
