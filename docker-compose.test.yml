@@ -1,0 +1,22 @@
+# Throwaway Postgres for the backend test suite:
+#   npm run test:db --workspace backend
+# Data lives in tmpfs, and the port differs from the dev database's 5432, so
+# tests can never touch dev data.
+name: monli-test
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: monli
+      POSTGRES_PASSWORD: monli
+      POSTGRES_DB: monli_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monli -d monli_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

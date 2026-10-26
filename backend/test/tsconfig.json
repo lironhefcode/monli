@@ -1,0 +1,10 @@
+// Type-checks the tests with the sources they import (npm run typecheck);
+// the build's tsconfig stays limited to src/.
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true
+  },
+  "include": ["../src", ".", "../vitest.config.ts"]
+}
