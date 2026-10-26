@@ -61,7 +61,10 @@ impl<T: Collector> DeviceCollector for T {
         // `Collector::collect` picks that trait's method; plain `self.collect()`
         // would be ambiguous here, since `T` has both.
         let value = Collector::collect(self).await?;
-        Ok(vec![Sample { device: None, value }])
+        Ok(vec![Sample {
+            device: None,
+            value,
+        }])
     }
 }
 
@@ -75,21 +78,39 @@ pub fn registry() -> Registry {
     registry.insert("memory_utilization", Arc::new(memory::MemoryUsedPct));
     registry.insert("disk_utilization", Arc::new(disk::DiskUsedPct));
     registry.insert("swap_utilization", Arc::new(swap::SwapUtilization));
-    registry.insert("load_per_core_1m", Arc::new(load::LoadPerCore::one_minute()));
-    registry.insert("load_per_core_5m", Arc::new(load::LoadPerCore::five_minutes()));
-    registry.insert("load_per_core_15m", Arc::new(load::LoadPerCore::fifteen_minutes()));
+    registry.insert(
+        "load_per_core_1m",
+        Arc::new(load::LoadPerCore::one_minute()),
+    );
+    registry.insert(
+        "load_per_core_5m",
+        Arc::new(load::LoadPerCore::five_minutes()),
+    );
+    registry.insert(
+        "load_per_core_15m",
+        Arc::new(load::LoadPerCore::fifteen_minutes()),
+    );
     registry.insert("process_count", Arc::new(process::ProcessCount));
     registry.insert("system_uptime", Arc::new(uptime::SystemUptime));
     let receive_rate = DeviceCounterRate::new(network::received_bytes);
     registry.insert("network_receive_rate", Arc::new(receive_rate));
     let transmit_rate = DeviceCounterRate::new(network::transmitted_bytes);
     registry.insert("network_transmit_rate", Arc::new(transmit_rate));
-    registry.insert("network_error_rate", Arc::new(DeviceCounterRate::new(network::errors)));
+    registry.insert(
+        "network_error_rate",
+        Arc::new(DeviceCounterRate::new(network::errors)),
+    );
 
     #[cfg(any(target_os = "linux", windows))]
     {
-        registry.insert("disk_read_rate", Arc::new(DeviceCounterRate::new(diskio::read_bytes)));
-        registry.insert("disk_write_rate", Arc::new(DeviceCounterRate::new(diskio::written_bytes)));
+        registry.insert(
+            "disk_read_rate",
+            Arc::new(DeviceCounterRate::new(diskio::read_bytes)),
+        );
+        registry.insert(
+            "disk_write_rate",
+            Arc::new(DeviceCounterRate::new(diskio::written_bytes)),
+        );
     }
 
     #[cfg(target_os = "linux")]

@@ -14,12 +14,16 @@ pub struct CpuPercent {
 
 impl CpuPercent {
     pub fn new() -> Self {
-        Self { system: Mutex::new(System::new()) }
+        Self {
+            system: Mutex::new(System::new()),
+        }
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, System>> {
         // Poisoned means a previous holder panicked mid-update.
-        self.system.lock().map_err(|_| anyhow!("CPU sampler state is poisoned"))
+        self.system
+            .lock()
+            .map_err(|_| anyhow!("CPU sampler state is poisoned"))
     }
 }
 

@@ -172,7 +172,9 @@ impl Scheduler {
                     self.apply_metric_list(poll.metrics);
                     self.request_checks(&poll.check_now);
                 }
-                Ok(Err(e)) => warn!(error = %e, "refreshing metric list failed; keeping current list"),
+                Ok(Err(e)) => {
+                    warn!(error = %e, "refreshing metric list failed; keeping current list")
+                }
                 Err(e) => warn!(error = %e, "metric list refresh task panicked"),
             }
         }
@@ -277,13 +279,24 @@ async fn send_batch(
 /// device is a host-wide value, anything else one value per device. `None`
 /// when there is nothing to send (no device had a baseline yet).
 fn reading_values(samples: Vec<Sample>) -> Option<ReadingValues> {
-    if let [Sample { device: None, value }] = samples.as_slice() {
+    if let [
+        Sample {
+            device: None,
+            value,
+        },
+    ] = samples.as_slice()
+    {
         return Some(ReadingValues::Host { value: *value });
     }
     let devices: Vec<DeviceValue> = samples
         .into_iter()
         // `?` in a closure returning Option: skips a sample with no device.
-        .filter_map(|sample| Some(DeviceValue { device: sample.device?, value: sample.value }))
+        .filter_map(|sample| {
+            Some(DeviceValue {
+                device: sample.device?,
+                value: sample.value,
+            })
+        })
         .collect();
     (!devices.is_empty()).then_some(ReadingValues::Devices { devices })
 }
@@ -294,7 +307,9 @@ fn is_idle<T>(handle: &Option<JoinHandle<T>>) -> bool {
 
 fn lock(pending: &Pending) -> std::sync::MutexGuard<'_, HashMap<String, Reading>> {
     // The map stays valid even if a holder panicked, so recover it.
-    pending.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 #[cfg(test)]
@@ -314,7 +329,10 @@ mod tests {
     }
 
     fn spec(key: &str) -> MetricSpec {
-        MetricSpec { metric_key: key.to_owned(), report_interval_sec: 3600 }
+        MetricSpec {
+            metric_key: key.to_owned(),
+            report_interval_sec: 3600,
+        }
     }
 
     #[test]
@@ -335,7 +353,10 @@ mod tests {
     }
 
     fn sample(device: Option<&str>, value: f64) -> Sample {
-        Sample { device: device.map(str::to_owned), value }
+        Sample {
+            device: device.map(str::to_owned),
+            value,
+        }
     }
 
     #[test]
@@ -350,8 +371,14 @@ mod tests {
         let values = reading_values(vec![sample(Some("sda"), 1.0), sample(Some("sdb"), 2.0)]);
 
         let expected = vec![
-            DeviceValue { device: "sda".to_owned(), value: 1.0 },
-            DeviceValue { device: "sdb".to_owned(), value: 2.0 },
+            DeviceValue {
+                device: "sda".to_owned(),
+                value: 1.0,
+            },
+            DeviceValue {
+                device: "sdb".to_owned(),
+                value: 2.0,
+            },
         ];
         assert_eq!(values, Some(ReadingValues::Devices { devices: expected }));
     }

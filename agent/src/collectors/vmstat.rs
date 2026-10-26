@@ -10,7 +10,10 @@ fn counter(vmstat: &str, name: &str) -> Result<u64> {
         .lines()
         .find(|line| line.split_whitespace().next() == Some(name))
         .with_context(|| format!("{name} missing from /proc/vmstat"))?;
-    let value = line.split_whitespace().nth(1).context("empty /proc/vmstat line")?;
+    let value = line
+        .split_whitespace()
+        .nth(1)
+        .context("empty /proc/vmstat line")?;
     Ok(value.parse()?)
 }
 

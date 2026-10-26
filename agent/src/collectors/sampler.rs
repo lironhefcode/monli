@@ -20,12 +20,16 @@ pub struct Sampler<T> {
 
 impl<T: Clone + Send> Sampler<T> {
     pub fn new() -> Self {
-        Self { last: Mutex::new(None) }
+        Self {
+            last: Mutex::new(None),
+        }
     }
 
     fn lock(&self) -> Result<MutexGuard<'_, Option<(Instant, T)>>> {
         // Poisoned means a previous holder panicked mid-update.
-        self.last.lock().map_err(|_| anyhow!("sampler state is poisoned"))
+        self.last
+            .lock()
+            .map_err(|_| anyhow!("sampler state is poisoned"))
     }
 
     /// The change since the previous sample (computed by `diff`) and the
@@ -82,7 +86,10 @@ pub struct CounterRate {
 #[cfg(target_os = "linux")]
 impl CounterRate {
     pub fn new(read: fn() -> Result<u64>) -> Self {
-        Self { read, sampler: Sampler::new() }
+        Self {
+            read,
+            sampler: Sampler::new(),
+        }
     }
 }
 
@@ -106,7 +113,10 @@ pub struct DeviceCounterRate {
 
 impl DeviceCounterRate {
     pub fn new(read: fn() -> Result<HashMap<String, u64>>) -> Self {
-        Self { read, sampler: Sampler::new() }
+        Self {
+            read,
+            sampler: Sampler::new(),
+        }
     }
 }
 
@@ -120,7 +130,10 @@ impl DeviceCollector for DeviceCounterRate {
             .await?;
         Ok(changes
             .into_iter()
-            .map(|(device, change)| Sample { device: Some(device), value: change as f64 / secs })
+            .map(|(device, change)| Sample {
+                device: Some(device),
+                value: change as f64 / secs,
+            })
             .collect())
     }
 }
@@ -149,7 +162,10 @@ mod tests {
     use super::*;
 
     fn counters(pairs: &[(&str, u64)]) -> HashMap<String, u64> {
-        pairs.iter().map(|&(device, value)| (device.to_owned(), value)).collect()
+        pairs
+            .iter()
+            .map(|&(device, value)| (device.to_owned(), value))
+            .collect()
     }
 
     #[test]
