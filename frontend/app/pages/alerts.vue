@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Alert, AlertAction } from "~/types/alerts";
+import { matchesSearch } from "~/utils/search";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -24,9 +25,28 @@ watch(
   { immediate: true }
 );
 
+// Kept in the URL like the tab; the tab counts show matches only.
+const search = useQueryString("q");
+const matchingAlerts = computed(
+  () =>
+    alerts.value?.filter((alert) =>
+      matchesSearch(search.value, [
+        alert.hostName,
+        alert.target.name,
+        alert.responsibleTeam,
+        alert.metric.metricKey,
+        alert.interface?.name,
+        alert.subject,
+        alert.description,
+        alert.severity,
+        alert.priority,
+      ])
+    ) ?? null
+);
+
 // Acked alerts move to their own tab, even if they escalate afterwards.
-const openAlerts = computed(() => alerts.value?.filter((alert) => !alert.acknowledged) ?? null);
-const ackedAlerts = computed(() => alerts.value?.filter((alert) => alert.acknowledged) ?? null);
+const openAlerts = computed(() => matchingAlerts.value?.filter((alert) => !alert.acknowledged) ?? null);
+const ackedAlerts = computed(() => matchingAlerts.value?.filter((alert) => alert.acknowledged) ?? null);
 
 // The selected tab lives in the URL, so reloads and shared links keep it.
 const tabs = computed(() => [
@@ -144,7 +164,17 @@ usePolling(() => {
       </template>
     </UModal>
 
-    <UTabs v-model="tab" :items="tabs" :content="false" variant="link" class="mt-4" />
+    <div class="mt-4 flex flex-wrap items-end justify-between gap-2">
+      <UTabs v-model="tab" :items="tabs" :content="false" variant="link" />
+      <UInput
+        v-model="search"
+        type="search"
+        icon="i-lucide-search"
+        placeholder="Search host, team, metric or message"
+        aria-label="Search alerts"
+        class="w-full max-w-sm"
+      />
+    </div>
 
     <div class="mt-6 space-y-4">
       <UAlert
@@ -164,7 +194,13 @@ usePolling(() => {
       <p v-if="!alerts && !error" class="text-muted">Loading alerts…</p>
 
       <div v-else-if="shownAlerts && shownAlerts.length === 0" class="rounded-(--ui-radius) border border-default bg-muted px-4 py-6 text-muted">
-        {{ tab === "acknowledged" ? "No acknowledged alerts." : "No open alerts." }}
+        <template v-if="search.trim()">
+          No {{ tab === "acknowledged" ? "acknowledged" : "open" }} alerts match this search.
+          <button type="button" class="text-primary hover:underline" @click="search = ''">Clear search</button>
+        </template>
+        <template v-else>
+          {{ tab === "acknowledged" ? "No acknowledged alerts." : "No open alerts." }}
+        </template>
       </div>
 
       <div v-else-if="shownAlerts" class="overflow-x-auto rounded-(--ui-radius) border border-default bg-muted">
