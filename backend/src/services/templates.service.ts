@@ -7,6 +7,7 @@ import type {
 } from "../schemas/templates.schema.js";
 import { assertValidThresholds } from "../utils/alert-levels.js";
 import { HttpError } from "../utils/http-error.js";
+import { HOST_UP_METRIC_KEY } from "./host-down.service.js";
 
 export function listTemplates() {
   return prisma.template.findMany({
@@ -109,6 +110,9 @@ export async function addTemplateMetric(
   });
   if (!metric) {
     throw new HttpError(404, "metric not found");
+  }
+  if (metric.metricKey === HOST_UP_METRIC_KEY) {
+    throw new HttpError(422, "host_up is built in and can't be added to a template");
   }
 
   assertValidThresholds(input.condition, input.warning_threshold, input.critical_threshold);
