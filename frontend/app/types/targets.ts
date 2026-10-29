@@ -10,6 +10,9 @@ export interface TargetSummary {
   // Shown instead of name when set (see displayName).
   alias: string | null;
   ipAddress: string | null;
+  os: string | null;
+  // e.g. "Ubuntu 22.04 (WSL)"; null until an agent that reports it enrolls.
+  distro: string | null;
   status: TargetStatus;
   responsibleTeam: string | null;
   lastSeenAt: string | null;
@@ -46,10 +49,7 @@ export interface TargetInterface {
 // GET /targets/:id.
 export interface TargetDetail extends TargetSummary {
   type: string;
-  os: string | null;
   arch: string | null;
-  // e.g. "Ubuntu 22.04 (WSL)"; null until an agent that reports it enrolls.
-  distro: string | null;
   description: string | null;
   createdAt: string;
   templates: { id: number; name: string }[];

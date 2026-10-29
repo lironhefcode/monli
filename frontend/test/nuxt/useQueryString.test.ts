@@ -1,0 +1,60 @@
+import { mountSuspended } from "@nuxt/test-utils/runtime";
+import { flushPromises } from "@vue/test-utils";
+import { describe, expect, it } from "vitest";
+import { defineComponent, h, type Ref } from "vue";
+
+let q: Ref<string>;
+let status: Ref<string>;
+
+const Filters = defineComponent({
+  setup() {
+    q = useQueryString("q");
+    status = useQueryString("status");
+    return () => h("div");
+  },
+});
+
+// Mounted on /login, since the auth middleware sends a signed-out visitor
+// anywhere else there.
+function mountAt(query: Record<string, string>) {
+  return mountSuspended(Filters, { route: { path: "/login", query } });
+}
+
+const currentQuery = () => useRouter().currentRoute.value.query;
+
+describe("useQueryString", () => {
+  it("reads its initial value from the URL", async () => {
+    await mountAt({ q: "web", tab: "acknowledged" });
+    expect(q.value).toBe("web");
+    expect(status.value).toBe("");
+  });
+
+  it("writes changes to the URL and keeps other keys", async () => {
+    await mountAt({ tab: "acknowledged" });
+    q.value = "db";
+    // Navigation runs the async route middleware first.
+    await expect.poll(currentQuery).toEqual({ tab: "acknowledged", q: "db" });
+  });
+
+  it("drops the key when cleared", async () => {
+    await mountAt({ q: "db" });
+    q.value = "";
+    // Navigation runs the async route middleware first.
+    await expect.poll(currentQuery).toEqual({});
+  });
+
+  it("applies changes to several keys in the same tick together", async () => {
+    await mountAt({ q: "db", status: "down" });
+    q.value = "";
+    status.value = "";
+    // Navigation runs the async route middleware first.
+    await expect.poll(currentQuery).toEqual({});
+  });
+
+  it("follows URL changes made elsewhere", async () => {
+    await mountAt({});
+    await useRouter().replace({ query: { q: "from-link" } });
+    await flushPromises();
+    expect(q.value).toBe("from-link");
+  });
+});

@@ -43,6 +43,8 @@ export async function listTargets() {
       name: true,
       alias: true,
       ipAddress: true,
+      os: true,
+      distro: true,
       status: true,
       responsibleTeam: true,
       lastSeenAt: true,
