@@ -9,6 +9,9 @@ const emit = defineEmits<{
   open: [alert: Alert];
 }>();
 
+// No reading to show or re-check: the host isn't reporting.
+const hostDown = computed(() => isHostDown(props.alert));
+
 const openedAt = computed(() => new Date(props.alert.openedAt));
 
 const openedAgo = computed(() => formatAgo(openedAt.value, props.now));
@@ -22,9 +25,14 @@ function withUnit(value: number) {
 
 // Most recent reading; the value that opened the alert is on hover.
 const value = computed(() =>
-  withUnit(props.alert.lastValue ?? props.alert.triggeredValue),
+  hostDown.value
+    ? "down"
+    : withUnit(props.alert.lastValue ?? props.alert.triggeredValue),
 );
 const valueTitle = computed(() => {
+  if (hostDown.value) {
+    return undefined;
+  }
   const updated = props.alert.lastValueAt
     ? `, updated ${formatAgo(props.alert.lastValueAt, props.now)}`
     : "";
@@ -50,7 +58,7 @@ const valueTitle = computed(() => {
     </td>
     <td class="px-4 py-2.5 text-toned">{{ alert.responsibleTeam }}</td>
     <td class="whitespace-nowrap px-4 py-2.5 font-mono">
-      {{ alert.metric.metricKey }}
+      {{ hostDown ? "Host down" : alert.metric.metricKey }}
     </td>
     <td
       class="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums"
@@ -69,6 +77,7 @@ const valueTitle = computed(() => {
     <td class="whitespace-nowrap px-4 py-2.5" @click.stop>
       <span class="inline-flex gap-1">
         <ActionButton
+          v-if="!hostDown"
           label="Check"
           size="xs"
           color="neutral"

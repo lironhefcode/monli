@@ -237,7 +237,7 @@ const interfaceKinds: Record<TargetInterface["kind"], string> = {
   network: "Network",
 };
 
-// Same window as the backend's TARGET_DOWN_AFTER_MS for whole resources.
+// Same window as the backend's MIN_DOWN_AFTER_MS for whole resources.
 const INTERFACE_STALE_AFTER_MS = 3 * 60 * 1000;
 
 function isStale(item: TargetInterface) {

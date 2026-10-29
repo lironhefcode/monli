@@ -3,8 +3,12 @@ import { prisma } from "../db/prisma.js";
 import type { CreateMetricInput, UpdateMetricDefaultsInput } from "../schemas/metrics.schema.js";
 import { assertValidThresholds } from "../utils/alert-levels.js";
 import { HttpError } from "../utils/http-error.js";
+import { HOST_UP_METRIC_KEY } from "./host-down.service.js";
 
 export async function createMetric(input: CreateMetricInput) {
+  if (input.metric_key === HOST_UP_METRIC_KEY) {
+    throw new HttpError(409, "metric_key is reserved");
+  }
   try {
     return await prisma.metric.create({
       data: {
@@ -32,7 +36,7 @@ export async function createMetric(input: CreateMetricInput) {
 // Forward-only: template metrics already using this metric keep their copies.
 export async function updateMetricDefaults(metricId: number, input: UpdateMetricDefaultsInput) {
   const metric = await prisma.metric.findUnique({ where: { id: metricId } });
-  if (!metric) {
+  if (!metric || metric.metricKey === HOST_UP_METRIC_KEY) {
     throw new HttpError(404, "metric not found");
   }
 
@@ -56,5 +60,8 @@ export async function updateMetricDefaults(metricId: number, input: UpdateMetric
 }
 
 export function listMetrics() {
-  return prisma.metric.findMany({ orderBy: { id: "asc" } });
+  return prisma.metric.findMany({
+    where: { metricKey: { not: HOST_UP_METRIC_KEY } },
+    orderBy: { id: "asc" },
+  });
 }

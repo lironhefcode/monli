@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { defineComponent, h } from "vue";
 import { UApp } from "#components";
 import ActionButton from "~/components/ActionButton.vue";
+import AlertRow from "~/components/AlertRow.vue";
 import LevelRules from "~/components/LevelRules.vue";
 import TargetStatus from "~/components/TargetStatus.vue";
+import type { Alert } from "~/types/alerts";
 import type { UserRole } from "~/types/users";
 
 describe("LevelRules", () => {
@@ -83,5 +85,55 @@ describe("ActionButton", () => {
     signInAs("admin");
     const found = await button({ disabled: true });
     expect(found.attributes("disabled")).toBeDefined();
+  });
+});
+
+describe("AlertRow", () => {
+  const base: Alert = {
+    id: 1,
+    severity: "critical",
+    priority: "p1",
+    status: "open",
+    subject: "web-1 is down",
+    description: null,
+    triggeredValue: 0,
+    lastValue: 0,
+    lastValueAt: null,
+    openedAt: new Date().toISOString(),
+    responsibleTeam: "ops",
+    hostName: "web-1",
+    acknowledged: false,
+    target: { id: 1, name: "web-1" },
+    metric: { id: 9, metricKey: "host_up", unit: null },
+    interface: null,
+  };
+
+  // UApp for the buttons' tooltips; a table so the row renders in place.
+  async function row(alert: Alert) {
+    const InTable = defineComponent(() => () =>
+      h(UApp, () => h("table", [h("tbody", [h(AlertRow, { alert, now: Date.now(), checking: false })])])),
+    );
+    return (await mountSuspended(InTable)).find("tr");
+  }
+
+  it("shows a host-down alert without a value or a check button", async () => {
+    const found = await row(base);
+    const cells = found.findAll("td").map((cell) => cell.text());
+    expect(cells[4]).toBe("Host down");
+    expect(cells[5]).toBe("down");
+    expect(found.findAll("button").map((b) => b.text())).toEqual(["Ack", "Resolve"]);
+  });
+
+  it("shows a metric alert's metric, value and check button", async () => {
+    const found = await row({
+      ...base,
+      triggeredValue: 95,
+      lastValue: 95,
+      metric: { id: 2, metricKey: "cpu_utilization", unit: "%" },
+    });
+    const cells = found.findAll("td").map((cell) => cell.text());
+    expect(cells[4]).toBe("cpu_utilization");
+    expect(cells[5]).toBe("95 %");
+    expect(found.findAll("button").map((b) => b.text())).toEqual(["Check", "Ack", "Resolve"]);
   });
 });

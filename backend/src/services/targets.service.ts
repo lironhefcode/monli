@@ -20,6 +20,7 @@ import {
 import { generateApiKey, hashApiKey } from "../utils/api-key.js";
 import { HttpError } from "../utils/http-error.js";
 import { resolvePolicy } from "../utils/resolve-policy.js";
+import { resolveHostDownAlert } from "./host-down.service.js";
 import { addCheck, completeCheck, takeUndelivered } from "./metric-checks.service.js";
 import { notifyAlert } from "./notifications.service.js";
 
@@ -252,6 +253,12 @@ async function effectiveMetrics(targetId: number) {
   });
 }
 
+// Longest effective report interval, 0 when the target has no metrics.
+export async function longestReportIntervalSec(targetId: number) {
+  const metrics = await effectiveMetrics(targetId);
+  return Math.max(0, ...metrics.map(({ report_interval_sec }) => report_interval_sec));
+}
+
 // Agent-facing metric list. Kept for agents that predate pollAgent.
 export async function getEffectiveMetrics(targetId: number) {
   const metrics = await effectiveMetrics(targetId);
@@ -430,6 +437,9 @@ export async function submitReading(targetId: number, input: SubmitReadingInput)
     where: { id: targetId },
     data: { lastSeenAt: recordedAt, status: "up" },
   });
+  // Checked on every reading, not only when the target was down: re-enrolling
+  // sets it up without one.
+  await resolveHostDownAlert(targetId, recordedAt);
 
   const recorded = await recordReadingValues(context, deviceKind, input);
   // A requested check is done once its reading is recorded and alerts
