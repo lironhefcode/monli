@@ -1,6 +1,6 @@
 import { mountSuspended } from "@nuxt/test-utils/runtime";
 import { flushPromises } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { defineComponent, h, type Ref } from "vue";
 
 let q: Ref<string>;
@@ -12,6 +12,12 @@ const Filters = defineComponent({
     status = useQueryString("status");
     return () => h("div");
   },
+});
+
+// Signed out with the session already loaded, so the auth middleware doesn't
+// call the API on each navigation.
+beforeEach(() => {
+  useAuth().user.value = null;
 });
 
 // Mounted on /login, since the auth middleware sends a signed-out visitor
