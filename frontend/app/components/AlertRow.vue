@@ -2,7 +2,8 @@
 import type { Alert, AlertAction } from "~/types/alerts";
 
 // checking: a "check now" for this alert's metric is waiting for its reading.
-const props = defineProps<{ alert: Alert; now: number; checking: boolean }>();
+// hideHost: the list is already for one resource, so the host column is left out.
+const props = defineProps<{ alert: Alert; now: number; checking: boolean; hideHost?: boolean }>();
 const emit = defineEmits<{
   action: [alert: Alert, action: AlertAction];
   check: [alert: Alert];
@@ -15,6 +16,14 @@ const hostDown = computed(() => isHostDown(props.alert));
 const openedAt = computed(() => new Date(props.alert.openedAt));
 
 const openedAgo = computed(() => formatAgo(openedAt.value, props.now));
+
+// Resolved alerts are history: their times replace the actions.
+const resolvedAt = computed(() =>
+  props.alert.resolvedAt ? new Date(props.alert.resolvedAt) : null,
+);
+const duration = computed(() =>
+  resolvedAt.value ? formatDuration(openedAt.value, resolvedAt.value) : null,
+);
 
 function withUnit(value: number) {
   const rounded = Math.round(value * 100) / 100;
@@ -53,7 +62,7 @@ const valueTitle = computed(() => {
       }}</span>
     </td>
     <td class="px-4 py-2.5 text-toned">{{ alert.priority.toUpperCase() }}</td>
-    <td class="whitespace-nowrap px-4 py-2.5 font-mono text-highlighted">
+    <td v-if="!hideHost" class="whitespace-nowrap px-4 py-2.5 font-mono text-highlighted">
       {{ alert.hostName }}
     </td>
     <td class="px-4 py-2.5 text-toned">{{ alert.responsibleTeam }}</td>
@@ -74,7 +83,20 @@ const valueTitle = computed(() => {
         openedAgo
       }}</time>
     </td>
-    <td class="whitespace-nowrap px-4 py-2.5" @click.stop>
+    <template v-if="alert.status === 'resolved'">
+      <td class="whitespace-nowrap px-4 py-2.5 text-muted">
+        <time
+          v-if="resolvedAt"
+          :datetime="alert.resolvedAt!"
+          :title="resolvedAt.toLocaleString()"
+          >{{ formatAgo(resolvedAt, now) }}</time
+        >
+      </td>
+      <td class="whitespace-nowrap px-4 py-2.5 tabular-nums text-toned">
+        {{ duration }}
+      </td>
+    </template>
+    <td v-else class="whitespace-nowrap px-4 py-2.5" @click.stop>
       <span class="inline-flex gap-1">
         <ActionButton
           v-if="!hostDown"
