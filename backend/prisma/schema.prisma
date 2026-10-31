@@ -225,8 +225,9 @@ model Alert {
   interface TargetInterface? @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
   comments  AlertComment[]
 
-  @@index([status], name: "idx_alerts_status")
-  @@index([targetId], name: "idx_alerts_target")
+  // Lists filter by status or target and page newest first.
+  @@index([status, openedAt], name: "idx_alerts_status")
+  @@index([targetId, openedAt], name: "idx_alerts_target")
   @@map("alerts")
 }
 

@@ -100,6 +100,7 @@ describe("AlertRow", () => {
     lastValue: 0,
     lastValueAt: null,
     openedAt: new Date().toISOString(),
+    resolvedAt: null,
     responsibleTeam: "ops",
     hostName: "web-1",
     acknowledged: false,
@@ -135,5 +136,20 @@ describe("AlertRow", () => {
     expect(cells[4]).toBe("cpu_utilization");
     expect(cells[5]).toBe("95 %");
     expect(found.findAll("button").map((b) => b.text())).toEqual(["Check", "Ack", "Resolve"]);
+  });
+
+  it("shows a resolved alert's resolved time and duration, without actions", async () => {
+    const openedAt = new Date(Date.now() - 3 * 3600_000);
+    const found = await row({
+      ...base,
+      status: "resolved",
+      openedAt: openedAt.toISOString(),
+      resolvedAt: new Date(openedAt.getTime() + 75 * 60_000).toISOString(),
+    });
+    const cells = found.findAll("td").map((cell) => cell.text());
+    expect(cells[7]).toBe("3 h ago");
+    expect(cells[8]).toBe("1 h ago");
+    expect(cells[9]).toBe("1 h 15 min");
+    expect(found.findAll("button")).toHaveLength(0);
   });
 });

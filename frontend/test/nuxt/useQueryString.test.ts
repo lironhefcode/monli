@@ -5,11 +5,13 @@ import { defineComponent, h, type Ref } from "vue";
 
 let q: Ref<string>;
 let status: Ref<string>;
+let teams: Ref<string[]>;
 
 const Filters = defineComponent({
   setup() {
     q = useQueryString("q");
     status = useQueryString("status");
+    teams = useQueryList("team");
     return () => h("div");
   },
 });
@@ -62,5 +64,34 @@ describe("useQueryString", () => {
     await useRouter().replace({ query: { q: "from-link" } });
     await flushPromises();
     expect(q.value).toBe("from-link");
+  });
+});
+
+describe("useQueryList", () => {
+  it("reads one or a repeated key as a list", async () => {
+    await mountSuspended(Filters, { route: { path: "/login", query: { team: ["ops", "data"] } } });
+    expect(teams.value).toEqual(["ops", "data"]);
+
+    await useRouter().replace({ query: { team: "web" } });
+    await flushPromises();
+    expect(teams.value).toEqual(["web"]);
+  });
+
+  it("writes a repeated key, and drops it when emptied", async () => {
+    await mountAt({ q: "db" });
+    teams.value = ["ops", "data"];
+    // Navigation runs the async route middleware first.
+    await expect.poll(currentQuery).toEqual({ q: "db", team: ["ops", "data"] });
+
+    teams.value = [];
+    await expect.poll(currentQuery).toEqual({ q: "db" });
+  });
+
+  it("keeps the same list when other keys change", async () => {
+    await mountSuspended(Filters, { route: { path: "/login", query: { team: ["ops"] } } });
+    const before = teams.value;
+    q.value = "db";
+    await expect.poll(currentQuery).toEqual({ team: ["ops"], q: "db" });
+    expect(teams.value).toBe(before);
   });
 });

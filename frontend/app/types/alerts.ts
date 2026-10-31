@@ -10,6 +10,8 @@ export interface Alert {
   lastValue: number | null;
   lastValueAt: string | null;
   openedAt: string;
+  // Set once the alert resolves, automatically or by hand.
+  resolvedAt: string | null;
   responsibleTeam: string | null;
   // Resource's displayed name when the alert opened; later renames don't change it.
   hostName: string;
@@ -19,6 +21,17 @@ export interface Alert {
   metric: { id: number; metricKey: string; unit: string | null };
   // The interface that breached, for per-device metrics.
   interface: { id: number; kind: string; name: string } | null;
+}
+
+// Tabs on the alert list; open alerts split by whether they're acknowledged.
+export type AlertTab = "open" | "acknowledged" | "resolved";
+
+// Response of GET /alerts: one page, the total matching the request, and how
+// many match the same filters in each tab.
+export interface AlertPage {
+  alerts: Alert[];
+  total: number;
+  counts: Record<AlertTab, number>;
 }
 
 export type AlertAction = "ack" | "unack" | "resolve";

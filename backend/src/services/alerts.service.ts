@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma.js";
 import type {
   ListAlertsQuery,
@@ -7,21 +8,72 @@ import type {
 import { HttpError } from "../utils/http-error.js";
 import { notifyAlert } from "./notifications.service.js";
 
-export function listAlerts(query: ListAlertsQuery) {
-  return prisma.alert.findMany({
-    where: {
-      status: query.status,
-      responsibleTeam: query.team,
-      priority: query.priority,
-    },
-    orderBy: { openedAt: "desc" },
-    // Names for display; select keeps secrets like target.apiKeyHash out.
-    include: {
-      target: { select: { id: true, name: true } },
-      metric: { select: { id: true, metricKey: true, unit: true } },
-      interface: { select: { id: true, kind: true, name: true } },
-    },
+// Every word must appear in at least one field, like the UI's matchesSearch.
+function searchWhere(search: string | undefined): Prisma.AlertWhereInput[] {
+  const words = search?.split(/\s+/).filter(Boolean) ?? [];
+  return words.map((word) => {
+    const contains = { contains: word, mode: "insensitive" } as const;
+    return {
+      OR: [
+        { hostName: contains },
+        { subject: contains },
+        { description: contains },
+        { responsibleTeam: contains },
+        { metric: { metricKey: contains } },
+        { interface: { name: contains } },
+      ],
+    };
   });
+}
+
+// One page of alerts, newest first, plus how many match the filters in each
+// tab (open, acknowledged, resolved) so the UI can label its tabs.
+export async function listAlerts(query: ListAlertsQuery) {
+  const baseWhere: Prisma.AlertWhereInput = {
+    responsibleTeam: query.team && { in: query.team },
+    priority: query.priority && { in: query.priority },
+    severity: query.severity,
+    targetId: query.targetId,
+    openedAt: { gte: query.from, lte: query.to },
+    AND: searchWhere(query.q),
+  };
+  const where: Prisma.AlertWhereInput = {
+    ...baseWhere,
+    status: query.status,
+    acknowledged: query.acknowledged,
+  };
+
+  const [alerts, total, groups] = await prisma.$transaction([
+    prisma.alert.findMany({
+      where,
+      // id breaks ties so pages don't skip or repeat alerts.
+      orderBy: [{ openedAt: "desc" }, { id: "desc" }],
+      skip: query.offset,
+      take: query.limit,
+      // Names for display; select keeps secrets like target.apiKeyHash out.
+      include: {
+        target: { select: { id: true, name: true } },
+        metric: { select: { id: true, metricKey: true, unit: true } },
+        interface: { select: { id: true, kind: true, name: true } },
+      },
+    }),
+    prisma.alert.count({ where }),
+    prisma.alert.groupBy({
+      by: ["status", "acknowledged"],
+      where: baseWhere,
+      orderBy: [{ status: "asc" }, { acknowledged: "asc" }],
+      _count: { _all: true },
+    }),
+  ]);
+
+  const counts = { open: 0, acknowledged: 0, resolved: 0 };
+  for (const group of groups) {
+    const count = (group._count as { _all: number })._all;
+    if (group.status === "resolved") counts.resolved += count;
+    else if (group.acknowledged) counts.acknowledged += count;
+    else counts.open += count;
+  }
+  return { alerts, total, counts };
 }
 
 async function findAlert(alertId: number) {

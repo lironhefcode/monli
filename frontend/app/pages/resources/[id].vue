@@ -32,6 +32,7 @@ const tabs = [
   { label: "Details", value: "details" },
   { label: "Templates & metrics", value: "config" },
   { label: "Graphs", value: "graphs" },
+  { label: "Alerts", value: "alerts" },
 ];
 const tab = computed({
   get: () =>
@@ -661,6 +662,9 @@ function formatDate(value: string | null) {
           </div>
         </section>
       </div>
+
+      <!-- Its tab, filters and page sit in the URL under their own keys (status, q, page, ...). -->
+      <AlertList v-else-if="tab === 'alerts'" :target-id="targetId" class="mt-6" />
 
       <div v-else class="mt-6">
         <section
